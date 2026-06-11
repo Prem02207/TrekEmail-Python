@@ -20,59 +20,11 @@
                         <textarea name="body" placeholder="Write your email content here..." class="w-full p-3 border rounded-xl h-32 text-sm"></textarea>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-bold text-gray-400 uppercase">Single Recipient</label>
-                                <input type="email" name="manual_email" placeholder="Recipient Email" class="border p-3 w-full rounded-xl text-sm">
-                            </div>
-                            <div class="space-y-1">
-                                <label class="text-[10px] font-bold text-gray-400 uppercase">Bulk CSV (Header must be 'email')</label>
-                                <input type="file" name="csv_file" accept=".csv" class="border p-2.5 w-full rounded-xl bg-gray-50 text-xs">
-                            </div>
+                            <input type="email" name="manual_email" placeholder="Recipient Email" class="border p-3 w-full rounded-xl text-sm">
+                            <input type="file" name="csv_file" accept=".csv" class="border p-2.5 w-full rounded-xl bg-gray-50 text-xs">
                         </div>
-
-                        <div class="space-y-1">
-                            <label class="text-[10px] font-bold text-gray-400 uppercase">Attachment (Optional)</label>
-                            <input type="file" name="attachment" class="border p-2.5 w-full rounded-xl bg-gray-50 text-xs">
-                        </div>
-
                         <button type="submit" id="sendBtn" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition">Send Email</button>
                     </form>
-                </div>
-
-                <div class="bg-white p-6 rounded-3xl border shadow-sm">
-                    <h3 class="font-bold text-lg mb-4">Recent Activity</h3>
-                    <div class="overflow-y-auto max-h-64 border rounded-2xl">
-                        <table class="w-full text-left text-xs">
-                            <thead class="bg-gray-50 sticky top-0">
-                                <tr class="text-gray-400 uppercase">
-                                    <th class="p-3">Email</th>
-                                    <th class="p-3">Status</th>
-                                    <th class="p-3">Mark</th>
-                                    <th class="p-3">Delivery</th>
-                                    <th class="p-3">Date</th> </tr>
-                            </thead>
-                            <tbody id="log-table" class="text-gray-600 divide-y"></tbody>
-                        </table>
-                    </div>
-                </div>
-            </div>
-
-            <div class="space-y-6">
-                <div class="bg-blue-600 p-6 rounded-3xl text-white shadow-lg">
-                    <p class="text-blue-100 text-xs">Total Sent</p>
-                    <h2 class="text-4xl font-black" id="total">0</h2>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-white p-4 rounded-2xl border text-center"><p class="text-[9px] uppercase font-bold text-gray-400">Inbox</p><h2 class="text-lg font-black text-green-600" id="inbox">0</h2></div>
-                    <div class="bg-white p-4 rounded-2xl border text-center"><p class="text-[9px] uppercase font-bold text-gray-400">Spam</p><h2 class="text-lg font-black text-red-500" id="spam">0</h2></div>
-                </div>
-                <div class="bg-white p-5 rounded-3xl border text-center">
-                    <p class="text-gray-400 text-[9px] uppercase font-bold">Read / Unread</p>
-                    <h2 class="text-2xl font-black text-purple-600"><span id="read">0</span> / <span id="unread">0</span></h2>
-                </div>
-                <div class="bg-white p-5 rounded-3xl border">
-                    <h3 class="font-bold text-gray-800 mb-2 text-xs uppercase">Emails by Date</h3>
-                    <div id="date-stats-container" class="space-y-2 text-[11px]"></div>
                 </div>
             </div>
         </div>
@@ -83,44 +35,28 @@
             e.preventDefault();
             const btn = document.getElementById('sendBtn');
             btn.innerText = "Sending...";
+
             const formData = new FormData(e.target);
-            await fetch('/api/send-bulk-email/', { method: 'POST', body: formData });
-            alert("Campaign processing started!");
-            btn.innerText = "Send Email";
-            e.target.reset();
-        };
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
 
-        async function loadStats() {
             try {
-                const res = await fetch('/api/stats/');
-                const data = await res.json();
-                document.getElementById('total').innerText = data.total_sent || 0;
-                document.getElementById('inbox').innerText = data.inbox_count || 0;
-                document.getElementById('spam').innerText = data.spam_count || 0;
-                document.getElementById('read').innerText = data.read_count || 0;
-                document.getElementById('unread').innerText = data.unread_count || 0;
+                const response = await fetch('/send-bulk-email/', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-CSRFToken': csrftoken }
+                });
 
-                document.getElementById('log-table').innerHTML = data.logs.map(log => `
-                    <tr>
-                        <td class="p-3 truncate max-w-[100px]">${log.email_address}</td>
-                        <td class="p-3 font-semibold text-blue-600">${log.status}</td>
-                        <td class="p-3">
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${log.mark === 'Read' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">
-                                ${log.mark === 'Sent' ? 'Unread' : log.mark}
-                            </span>
-                        </td>
-                        <td class="p-3">${log.deliverability}</td>
-                        <td class="p-3 text-gray-400">${log.date_sent}</td>
-                    </tr>
-                `).join('');
-
-                document.getElementById('date-stats-container').innerHTML = data.date_stats.map(ds => `
-                    <div class="flex justify-between border-b pb-1"><span>${ds.date}</span><span class="font-bold">${ds.count}</span></div>
-                `).join('');
-            } catch (err) { console.error(err); }
-        }
-        setInterval(loadStats, 5000);
-        loadStats();
+                if (response.ok) {
+                    alert("Campaign started successfully!");
+                    e.target.reset();
+                } else {
+                    alert("Error: Something went wrong.");
+                }
+            } catch (err) {
+                console.error(err);
+            }
+            btn.innerText = "Send Email";
+        };
     </script>
 </body>
 </html>
