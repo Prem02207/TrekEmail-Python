@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: trek-email-app
+    runtime: python
+    buildCommand: "pip install -r requirements.txt && python manage.py collectstatic --noinput"
+    startCommand: "gunicorn core.wsgi:application"
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
