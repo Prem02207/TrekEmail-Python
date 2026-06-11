@@ -1,3 +1,9 @@
+import os
+import sys
+import pandas as pd
+import base64
+import threading
+import traceback
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
@@ -7,18 +13,18 @@ from django.http import HttpResponse
 from django.db import close_old_connections
 from django.db.models import Count
 from django.db.models.functions import TruncDate
-import pandas as pd
-import base64
-import threading
-import traceback
 from .models import EmailLog
 
+# DEBUG: Check if code is loading on server
+print("DEBUG: Python path is", sys.path)
+print("DEBUG: views.py loaded successfully")
 
 # --- 1. Template Rendering View ---
 def dashboard_view(request):
+    print("DEBUG: Dashboard view accessed")
     emails = EmailLog.objects.all()
 
-    # Date-wise statistics - Yahan humne aapka naya logic integrate kiya hai
+    # Date-wise statistics
     email_stats = EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
         count=Count('id')).order_by('-date')
 
@@ -29,7 +35,7 @@ def dashboard_view(request):
         'unread': emails.filter(status='Sent').count(),
         'read': emails.filter(status='Read').count(),
         'recent_emails': emails.order_by('-created_at'),
-        'email_stats': email_stats  # Yahan context mein pass kar diya
+        'email_stats': email_stats
     }
     return render(request, 'dashboard.html', context)
 
@@ -56,6 +62,7 @@ class DashboardStatsView(APIView):
                 ]
             })
         except Exception as e:
+            print(f"DEBUG: Stats API Error: {e}")
             return Response({"error": str(e)}, status=500)
 
 
@@ -82,7 +89,6 @@ class SendBulkEmailView(APIView):
                     with get_connection() as connection:
                         for email in recipient_list:
                             try:
-                                print(f"Attempting to send to {email}")
                                 log = EmailLog.objects.create(email_address=email, status='Sent',
                                                               deliverability='Inbox')
                                 pixel_url = f"{domain}/track/{log.id}.png/"
@@ -95,17 +101,18 @@ class SendBulkEmailView(APIView):
                                     msg.attach(attach_name, attach_data, attach_type)
 
                                 msg.send()
-                                print(f"Success sent to {email}")
+                                print(f"DEBUG: Email sent to {email}")
                             except Exception as e:
-                                print(f"Error sending to {email}: {e}")
+                                print(f"DEBUG: Error sending to {email}: {e}")
                 except Exception as e:
-                    print(f"Connection Error: {e}")
+                    print(f"DEBUG: Connection Error: {e}")
 
             threading.Thread(target=send_emails_task,
                              args=(recipients, subject, body, attach_data, attach_name, attach_type, domain),
                              daemon=True).start()
             return Response({"message": "Processing started in background"})
         except Exception as e:
+            print(f"DEBUG: Bulk Send Error: {e}")
             return Response({"error": str(e)}, status=500)
 
 
@@ -117,7 +124,7 @@ class TrackEmailView(APIView):
             if log.status != 'Read':
                 log.status = 'Read'
                 log.save()
-        except EmailLog.DoesNotExist:
-            pass
+        except Exception as e:
+            print(f"DEBUG: Tracking Error: {e}")
         return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
                             content_type="image/gif")
