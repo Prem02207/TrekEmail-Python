@@ -22,22 +22,25 @@ print("DEBUG: views.py loaded successfully")
 # --- 1. Template Rendering View ---
 def dashboard_view(request):
     print("DEBUG: Dashboard view accessed")
-    emails = EmailLog.objects.all()
+    try:
+        emails = EmailLog.objects.all()
+        # Date-wise statistics
+        email_stats = EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
+            count=Count('id')).order_by('-date')
 
-    # Date-wise statistics
-    email_stats = EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
-        count=Count('id')).order_by('-date')
-
-    context = {
-        'total_sent': emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
-        'inbox': emails.filter(deliverability='Inbox').count(),
-        'spam': emails.filter(deliverability='Spam').count(),
-        'unread': emails.filter(status='Sent').count(),
-        'read': emails.filter(status='Read').count(),
-        'recent_emails': emails.order_by('-created_at'),
-        'email_stats': email_stats
-    }
-    return render(request, 'dashboard.html', context)
+        context = {
+            'total_sent': emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
+            'inbox': emails.filter(deliverability='Inbox').count(),
+            'spam': emails.filter(deliverability='Spam').count(),
+            'unread': emails.filter(status='Sent').count(),
+            'read': emails.filter(status='Read').count(),
+            'recent_emails': emails.order_by('-created_at'),
+            'email_stats': email_stats
+        }
+        return render(request, 'dashboard.html', context)
+    except Exception as e:
+        print(f"DEBUG: Critical Error in dashboard_view: {e}")
+        return HttpResponse(f"Error: {str(e)}", status=500)
 
 
 # --- 2. Dashboard Stats API ---
@@ -86,26 +89,31 @@ class SendBulkEmailView(APIView):
             def send_emails_task(recipient_list, subject, body, attach_data, attach_name, attach_type, domain):
                 try:
                     close_old_connections()
-                    with get_connection() as connection:
-                        for email in recipient_list:
-                            try:
-                                log = EmailLog.objects.create(email_address=email, status='Sent',
-                                                              deliverability='Inbox')
-                                pixel_url = f"{domain}/track/{log.id}.png/"
-                                content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
+                    # SMTP Connection Debugging
+                    try:
+                        with get_connection() as connection:
+                            print("DEBUG: Connection established successfully")
+                            for email in recipient_list:
+                                try:
+                                    log = EmailLog.objects.create(email_address=email, status='Sent',
+                                                                  deliverability='Inbox')
+                                    pixel_url = f"{domain}/track/{log.id}.png/"
+                                    content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
-                                msg = EmailMessage(subject, content, settings.DEFAULT_FROM_EMAIL, [email],
-                                                   connection=connection)
-                                msg.content_subtype = "html"
-                                if attach_data:
-                                    msg.attach(attach_name, attach_data, attach_type)
+                                    msg = EmailMessage(subject, content, settings.DEFAULT_FROM_EMAIL, [email],
+                                                       connection=connection)
+                                    msg.content_subtype = "html"
+                                    if attach_data:
+                                        msg.attach(attach_name, attach_data, attach_type)
 
-                                msg.send()
-                                print(f"DEBUG: Email sent to {email}")
-                            except Exception as e:
-                                print(f"DEBUG: Error sending to {email}: {e}")
+                                    msg.send()
+                                    print(f"DEBUG: Email sent to {email}")
+                                except Exception as e:
+                                    print(f"DEBUG: Error sending to {email}: {e}")
+                    except Exception as conn_err:
+                        print(f"DEBUG: CONNECTION FAILED: {conn_err}")
                 except Exception as e:
-                    print(f"DEBUG: Connection Error: {e}")
+                    print(f"DEBUG: General Task Error: {e}")
 
             threading.Thread(target=send_emails_task,
                              args=(recipients, subject, body, attach_data, attach_name, attach_type, domain),
