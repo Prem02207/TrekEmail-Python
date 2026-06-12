@@ -2,7 +2,6 @@ import os
 import sys
 import pandas as pd
 import base64
-import threading
 import traceback
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -18,6 +17,7 @@ from .models import EmailLog
 # DEBUG: Check if code is loading on server
 print("DEBUG: Python path is", sys.path)
 print("DEBUG: views.py loaded successfully")
+
 
 # --- 1. Template Rendering View ---
 def dashboard_view(request):
@@ -69,7 +69,7 @@ class DashboardStatsView(APIView):
             return Response({"error": str(e)}, status=500)
 
 
-# --- 3. Bulk Email Sending View ---
+# --- 3. Bulk Email Sending View (Updated for Render Compatibility) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -86,41 +86,51 @@ class SendBulkEmailView(APIView):
 
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
 
-            def send_emails_task(recipient_list, subject, body, attach_data, attach_name, attach_type, domain):
+            print(f"DEBUG: Starting process for {len(recipients)} recipients...")
+
+            # Connection setup
+            connection = get_connection(
+                host=settings.EMAIL_HOST,
+                port=settings.EMAIL_PORT,
+                username=settings.EMAIL_HOST_USER,
+                password=settings.EMAIL_HOST_PASSWORD,
+                use_tls=settings.EMAIL_USE_TLS,
+                fail_silently=False
+            )
+
+            connection.open()
+            print("DEBUG: Connection opened successfully.")
+
+            for email in recipients:
                 try:
                     close_old_connections()
-                    # SMTP Connection Debugging
-                    try:
-                        with get_connection() as connection:
-                            print("DEBUG: Connection established successfully")
-                            for email in recipient_list:
-                                try:
-                                    log = EmailLog.objects.create(email_address=email, status='Sent',
-                                                                  deliverability='Inbox')
-                                    pixel_url = f"{domain}/track/{log.id}.png/"
-                                    content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
+                    log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
+                    pixel_url = f"{domain}/track/{log.id}.png/"
+                    content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
-                                    msg = EmailMessage(subject, content, settings.DEFAULT_FROM_EMAIL, [email],
-                                                       connection=connection)
-                                    msg.content_subtype = "html"
-                                    if attach_data:
-                                        msg.attach(attach_name, attach_data, attach_type)
+                    msg = EmailMessage(
+                        subject,
+                        content,
+                        settings.DEFAULT_FROM_EMAIL,
+                        [email],
+                        connection=connection
+                    )
+                    msg.content_subtype = "html"
+                    if attach_data:
+                        msg.attach(attach_name, attach_data, attach_type)
 
-                                    msg.send()
-                                    print(f"DEBUG: Email sent to {email}")
-                                except Exception as e:
-                                    print(f"DEBUG: Error sending to {email}: {e}")
-                    except Exception as conn_err:
-                        print(f"DEBUG: CONNECTION FAILED: {conn_err}")
+                    msg.send()
+                    print(f"DEBUG: Email sent to {email}")
                 except Exception as e:
-                    print(f"DEBUG: General Task Error: {e}")
+                    print(f"DEBUG: Error sending to {email}: {str(e)}")
 
-            threading.Thread(target=send_emails_task,
-                             args=(recipients, subject, body, attach_data, attach_name, attach_type, domain),
-                             daemon=True).start()
-            return Response({"message": "Processing started in background"})
+            connection.close()
+            print("DEBUG: All emails processed, connection closed.")
+            return Response({"message": "Campaign finished successfully"})
+
         except Exception as e:
-            print(f"DEBUG: Bulk Send Error: {e}")
+            print(f"DEBUG: CRITICAL BULK SEND ERROR: {str(e)}")
+            traceback.print_exc()
             return Response({"error": str(e)}, status=500)
 
 
