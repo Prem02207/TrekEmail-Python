@@ -36,7 +36,30 @@ def dashboard_view(request):
     except Exception as e:
         return HttpResponse(f"Error: {str(e)}", status=500)
 
-# --- 2. Bulk Email Sending View (API Based) ---
+# --- 2. Dashboard Stats API ---
+class DashboardStatsView(APIView):
+    def get(self, request):
+        try:
+            emails = EmailLog.objects.all()
+            return Response({
+                "total_sent": emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
+                "inbox_count": emails.filter(deliverability='Inbox').count(),
+                "spam_count": emails.filter(deliverability='Spam').count(),
+                "read_count": emails.filter(status='Read').count(),
+                "unread_count": emails.filter(status='Sent').count(),
+                "logs": [
+                    {
+                        'email_address': log.email_address,
+                        'status': log.status,
+                        'deliverability': log.deliverability,
+                        'date_sent': log.created_at.strftime('%Y-%m-%d')
+                    } for log in emails.order_by('-created_at')[:10]
+                ]
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+# --- 3. Bulk Email Sending View (API Based) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -52,7 +75,7 @@ class SendBulkEmailView(APIView):
             url = "https://api.brevo.com/v3/smtp/email"
             headers = {
                 "accept": "application/json",
-                "api-key": settings.EMAIL_HOST_PASSWORD, # Yahan Render environment variable wali API key hi use hogi
+                "api-key": settings.EMAIL_HOST_PASSWORD,
                 "content-type": "application/json"
             }
 
@@ -83,7 +106,7 @@ class SendBulkEmailView(APIView):
             traceback.print_exc()
             return Response({"error": str(e)}, status=500)
 
-# --- 3. Tracking Pixel View ---
+# --- 4. Tracking Pixel View ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         try:
