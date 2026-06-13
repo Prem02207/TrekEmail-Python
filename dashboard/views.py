@@ -1,5 +1,4 @@
 import os
-import sys
 import pandas as pd
 import base64
 import traceback
@@ -14,8 +13,6 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from .models import EmailLog
 
-# DEBUG: Check if code is loading on server
-print("DEBUG: views.py loaded successfully")
 
 # --- 1. Dashboard View ---
 def dashboard_view(request):
@@ -35,6 +32,7 @@ def dashboard_view(request):
         return render(request, 'dashboard.html', context)
     except Exception as e:
         return HttpResponse(f"Error: {str(e)}", status=500)
+
 
 # --- 2. Dashboard Stats API ---
 class DashboardStatsView(APIView):
@@ -59,6 +57,7 @@ class DashboardStatsView(APIView):
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
+
 # --- 3. Bulk Email Sending View (API Based) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
@@ -70,12 +69,13 @@ class SendBulkEmailView(APIView):
             body = request.POST.get('body')
             attachment = request.FILES.get('attachment')
 
+            # Email list collect karo
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
 
             url = "https://api.brevo.com/v3/smtp/email"
             headers = {
                 "accept": "application/json",
-                "api-key": settings.EMAIL_HOST_PASSWORD,
+                "api-key": settings.EMAIL_HOST_PASSWORD,  # Render se load hogi
                 "content-type": "application/json"
             }
 
@@ -98,13 +98,18 @@ class SendBulkEmailView(APIView):
                         "content": base64.b64encode(attachment.read()).decode('utf-8')
                     }]
 
+                # API Call
                 response = requests.post(url, json=payload, headers=headers)
                 print(f"DEBUG: Status for {email}: {response.status_code} - {response.text}")
+
+                if response.status_code != 201:
+                    print(f"ERROR: Failed to send to {email}: {response.text}")
 
             return Response({"message": "Campaign finished successfully"})
         except Exception as e:
             traceback.print_exc()
             return Response({"error": str(e)}, status=500)
+
 
 # --- 4. Tracking Pixel View ---
 class TrackEmailView(APIView):
