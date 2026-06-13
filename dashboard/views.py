@@ -40,7 +40,7 @@ def dashboard_view(request):
         return HttpResponse(f"Error: {str(e)}", status=500)
 
 
-# --- 2. Dashboard Stats API (Wapas add kar di hai) ---
+# --- 2. Dashboard Stats API ---
 class DashboardStatsView(APIView):
     def get(self, request):
         try:
@@ -49,7 +49,7 @@ class DashboardStatsView(APIView):
                 "total_sent": emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
                 "inbox_count": emails.filter(deliverability='Inbox').count(),
                 "spam_count": emails.filter(deliverability='Spam').count(),
-                "read_count": emails.filter(status='Read').count(),
+                "read_count": emails.filter(deliverability='Read').count(),
                 "unread_count": emails.filter(status='Sent').count(),
                 "logs": [
                     {
@@ -64,7 +64,7 @@ class DashboardStatsView(APIView):
             return Response({"error": str(e)}, status=500)
 
 
-# --- 3. Bulk Email Sending View (API Based) ---
+# --- 3. Bulk Email Sending View (API Based - Debug Enabled) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -103,7 +103,17 @@ class SendBulkEmailView(APIView):
                         "content": base64.b64encode(attachment.read()).decode('utf-8')
                     }]
 
-                requests.post(url, json=payload, headers=headers)
+                # API Call with Debugging
+                print(f"DEBUG: Sending request to Brevo for {email}...")
+                response = requests.post(url, json=payload, headers=headers)
+
+                print(f"DEBUG: Response Status: {response.status_code}")
+                print(f"DEBUG: Response Body: {response.text}")
+
+                if response.status_code == 201:
+                    print(f"DEBUG: Email sent via API to {email}")
+                else:
+                    print(f"DEBUG: API Error for {email}: {response.text}")
 
             return Response({"message": "Campaign finished successfully"})
         except Exception as e:
