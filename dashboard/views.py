@@ -15,9 +15,7 @@ from django.db.models.functions import TruncDate
 from .models import EmailLog
 
 # DEBUG: Check if code is loading on server
-print("DEBUG: Python path is", sys.path)
 print("DEBUG: views.py loaded successfully")
-
 
 # --- 1. Dashboard View ---
 def dashboard_view(request):
@@ -25,7 +23,6 @@ def dashboard_view(request):
         emails = EmailLog.objects.all()
         email_stats = EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
             count=Count('id')).order_by('-date')
-
         context = {
             'total_sent': emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
             'inbox': emails.filter(deliverability='Inbox').count(),
@@ -39,32 +36,7 @@ def dashboard_view(request):
     except Exception as e:
         return HttpResponse(f"Error: {str(e)}", status=500)
 
-
-# --- 2. Dashboard Stats API ---
-class DashboardStatsView(APIView):
-    def get(self, request):
-        try:
-            emails = EmailLog.objects.all()
-            return Response({
-                "total_sent": emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
-                "inbox_count": emails.filter(deliverability='Inbox').count(),
-                "spam_count": emails.filter(deliverability='Spam').count(),
-                "read_count": emails.filter(deliverability='Read').count(),
-                "unread_count": emails.filter(status='Sent').count(),
-                "logs": [
-                    {
-                        'email_address': log.email_address,
-                        'status': log.status,
-                        'deliverability': log.deliverability,
-                        'date_sent': log.created_at.strftime('%Y-%m-%d')
-                    } for log in emails.order_by('-created_at')[:10]
-                ]
-            })
-        except Exception as e:
-            return Response({"error": str(e)}, status=500)
-
-
-# --- 3. Bulk Email Sending View (API Based - Debug Enabled) ---
+# --- 2. Bulk Email Sending View (API Based) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -80,7 +52,7 @@ class SendBulkEmailView(APIView):
             url = "https://api.brevo.com/v3/smtp/email"
             headers = {
                 "accept": "application/json",
-                "api-key": settings.EMAIL_HOST_PASSWORD,
+                "api-key": settings.EMAIL_HOST_PASSWORD, # Yahan Render environment variable wali API key hi use hogi
                 "content-type": "application/json"
             }
 
@@ -91,7 +63,7 @@ class SendBulkEmailView(APIView):
                 content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
                 payload = {
-                    "sender": {"email": settings.DEFAULT_FROM_EMAIL},
+                    "sender": {"name": "Prem Yadav", "email": settings.DEFAULT_FROM_EMAIL},
                     "to": [{"email": email}],
                     "subject": subject,
                     "htmlContent": content
@@ -103,25 +75,15 @@ class SendBulkEmailView(APIView):
                         "content": base64.b64encode(attachment.read()).decode('utf-8')
                     }]
 
-                # API Call with Debugging
-                print(f"DEBUG: Sending request to Brevo for {email}...")
                 response = requests.post(url, json=payload, headers=headers)
-
-                print(f"DEBUG: Response Status: {response.status_code}")
-                print(f"DEBUG: Response Body: {response.text}")
-
-                if response.status_code == 201:
-                    print(f"DEBUG: Email sent via API to {email}")
-                else:
-                    print(f"DEBUG: API Error for {email}: {response.text}")
+                print(f"DEBUG: Status for {email}: {response.status_code} - {response.text}")
 
             return Response({"message": "Campaign finished successfully"})
         except Exception as e:
             traceback.print_exc()
             return Response({"error": str(e)}, status=500)
 
-
-# --- 4. Tracking Pixel View ---
+# --- 3. Tracking Pixel View ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         try:
