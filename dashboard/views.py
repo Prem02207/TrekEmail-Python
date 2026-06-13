@@ -3,10 +3,10 @@ import sys
 import pandas as pd
 import base64
 import traceback
+import requests  # Naya import
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
-from django.core.mail import EmailMessage, get_connection
 from django.conf import settings
 from django.http import HttpResponse
 from django.db import close_old_connections
@@ -19,12 +19,10 @@ print("DEBUG: Python path is", sys.path)
 print("DEBUG: views.py loaded successfully")
 
 
-# --- 1. Template Rendering View ---
+# --- 1. Dashboard View ---
 def dashboard_view(request):
-    print("DEBUG: Dashboard view accessed")
     try:
         emails = EmailLog.objects.all()
-        # Date-wise statistics
         email_stats = EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
             count=Count('id')).order_by('-date')
 
@@ -39,37 +37,10 @@ def dashboard_view(request):
         }
         return render(request, 'dashboard.html', context)
     except Exception as e:
-        print(f"DEBUG: Critical Error in dashboard_view: {e}")
         return HttpResponse(f"Error: {str(e)}", status=500)
 
 
-# --- 2. Dashboard Stats API ---
-class DashboardStatsView(APIView):
-    def get(self, request):
-        try:
-            emails = EmailLog.objects.all()
-            return Response({
-                "total_sent": emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
-                "inbox_count": emails.filter(deliverability='Inbox').count(),
-                "spam_count": emails.filter(deliverability='Spam').count(),
-                "read_count": emails.filter(status='Read').count(),
-                "unread_count": emails.filter(status='Sent').count(),
-                "logs": [
-                    {
-                        'email_address': log.email_address,
-                        'status': log.status,
-                        'deliverability': log.deliverability,
-                        'mark': log.status,
-                        'date_sent': log.created_at.strftime('%Y-%m-%d')
-                    } for log in emails.order_by('-created_at')[:10]
-                ]
-            })
-        except Exception as e:
-            print(f"DEBUG: Stats API Error: {e}")
-            return Response({"error": str(e)}, status=500)
-
-
-# --- 3. Bulk Email Sending View (Updated for Render Compatibility) ---
+# --- 2. Bulk Email Sending View (API Based - Render Compatible) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -80,61 +51,54 @@ class SendBulkEmailView(APIView):
             body = request.POST.get('body')
             attachment = request.FILES.get('attachment')
 
-            attach_data = attachment.read() if attachment else None
-            attach_name = attachment.name if attachment else None
-            attach_type = attachment.content_type if attachment else None
-
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
 
-            print(f"DEBUG: Starting process for {len(recipients)} recipients...")
+            # API Setup
+            url = "https://api.brevo.com/v3/smtp/email"
+            headers = {
+                "accept": "application/json",
+                "api-key": settings.EMAIL_HOST_PASSWORD,  # Apni SMTP Key hi yahan API key hai
+                "content-type": "application/json"
+            }
 
-            # Connection setup
-            connection = get_connection(
-                host=settings.EMAIL_HOST,
-                port=settings.EMAIL_PORT,
-                username=settings.EMAIL_HOST_USER,
-                password=settings.EMAIL_HOST_PASSWORD,
-                use_tls=settings.EMAIL_USE_TLS,
-                fail_silently=False
-            )
-
-            connection.open()
-            print("DEBUG: Connection opened successfully.")
+            print(f"DEBUG: Starting API process for {len(recipients)} recipients...")
 
             for email in recipients:
-                try:
-                    close_old_connections()
-                    log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
-                    pixel_url = f"{domain}/track/{log.id}.png/"
-                    content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
+                close_old_connections()
+                log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
+                pixel_url = f"{domain}/track/{log.id}.png/"
+                content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
-                    msg = EmailMessage(
-                        subject,
-                        content,
-                        settings.DEFAULT_FROM_EMAIL,
-                        [email],
-                        connection=connection
-                    )
-                    msg.content_subtype = "html"
-                    if attach_data:
-                        msg.attach(attach_name, attach_data, attach_type)
+                payload = {
+                    "sender": {"email": settings.DEFAULT_FROM_EMAIL},
+                    "to": [{"email": email}],
+                    "subject": subject,
+                    "htmlContent": content
+                }
 
-                    msg.send()
-                    print(f"DEBUG: Email sent to {email}")
-                except Exception as e:
-                    print(f"DEBUG: Error sending to {email}: {str(e)}")
+                # Attachment Handle
+                if attachment:
+                    payload["attachment"] = [{
+                        "name": attachment.name,
+                        "content": base64.b64encode(attachment.read()).decode('utf-8')
+                    }]
 
-            connection.close()
-            print("DEBUG: All emails processed, connection closed.")
+                # API Call (HTTPS - Render block nahi karega)
+                response = requests.post(url, json=payload, headers=headers)
+
+                if response.status_code == 201:
+                    print(f"DEBUG: Email sent via API to {email}")
+                else:
+                    print(f"DEBUG: API Error for {email}: {response.text}")
+
             return Response({"message": "Campaign finished successfully"})
 
         except Exception as e:
-            print(f"DEBUG: CRITICAL BULK SEND ERROR: {str(e)}")
             traceback.print_exc()
             return Response({"error": str(e)}, status=500)
 
 
-# --- 4. Tracking Pixel View ---
+# --- 3. Tracking Pixel View ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         try:
@@ -142,7 +106,7 @@ class TrackEmailView(APIView):
             if log.status != 'Read':
                 log.status = 'Read'
                 log.save()
-        except Exception as e:
-            print(f"DEBUG: Tracking Error: {e}")
+        except:
+            pass
         return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
                             content_type="image/gif")
