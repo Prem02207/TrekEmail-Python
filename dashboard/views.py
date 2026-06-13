@@ -11,6 +11,7 @@ from django.http import HttpResponse
 from django.db import close_old_connections
 from django.db.models import Count
 from django.db.models.functions import TruncDate
+from django.utils.timezone import localtime  # Import added
 from .models import EmailLog
 
 
@@ -20,13 +21,24 @@ def dashboard_view(request):
         emails = EmailLog.objects.all()
         email_stats = EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
             count=Count('id')).order_by('-date')
+
+        # Localtime ke saath data format karna
+        recent_emails_data = [
+            {
+                'email_address': log.email_address,
+                'status': log.status,
+                'deliverability': log.deliverability,
+                'created_at': localtime(log.created_at)
+            } for log in emails.order_by('-created_at')
+        ]
+
         context = {
             'total_sent': emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
             'inbox': emails.filter(deliverability='Inbox').count(),
             'spam': emails.filter(deliverability='Spam').count(),
             'unread': emails.filter(status='Sent').count(),
             'read': emails.filter(status='Read').count(),
-            'recent_emails': emails.order_by('-created_at'),
+            'recent_emails': recent_emails_data,  # Updated list
             'email_stats': email_stats
         }
         return render(request, 'dashboard.html', context)
@@ -50,7 +62,7 @@ class DashboardStatsView(APIView):
                         'email_address': log.email_address,
                         'status': log.status,
                         'deliverability': log.deliverability,
-                        'date_sent': log.created_at.strftime('%Y-%m-%d')
+                        'date_sent': localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
                     } for log in emails.order_by('-created_at')[:10]
                 ]
             })
@@ -69,13 +81,12 @@ class SendBulkEmailView(APIView):
             body = request.POST.get('body')
             attachment = request.FILES.get('attachment')
 
-            # Email list collect karo
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
 
             url = "https://api.brevo.com/v3/smtp/email"
             headers = {
                 "accept": "application/json",
-                "api-key": settings.EMAIL_HOST_PASSWORD,  # Render se load hogi
+                "api-key": settings.EMAIL_HOST_PASSWORD,
                 "content-type": "application/json"
             }
 
@@ -98,12 +109,8 @@ class SendBulkEmailView(APIView):
                         "content": base64.b64encode(attachment.read()).decode('utf-8')
                     }]
 
-                # API Call
                 response = requests.post(url, json=payload, headers=headers)
                 print(f"DEBUG: Status for {email}: {response.status_code} - {response.text}")
-
-                if response.status_code != 201:
-                    print(f"ERROR: Failed to send to {email}: {response.text}")
 
             return Response({"message": "Campaign finished successfully"})
         except Exception as e:

@@ -1,4 +1,5 @@
 <!DOCTYPE html>
+{% load tz %}
 <html lang="en">
 <head>
     <script src="https://cdn.tailwindcss.com"></script>
@@ -101,7 +102,9 @@
                                 </td>
 
                                 <td class="p-4 text-gray-500">{{ email.deliverability }}</td>
-                                <td class="p-4 text-gray-400">{{ email.created_at|date:"Y-m-d H:i" }}</td>
+                                <td class="p-4 text-gray-400">
+                                    {{ email.created_at|date:"d-m-Y H:i" }}
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>

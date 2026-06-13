@@ -12,6 +12,13 @@ SECRET_KEY = os.environ.get('SECRET_KEY', 'django-insecure-z=d!p$77#6-e&y^%p1l_r
 DEBUG = os.environ.get('DEBUG', 'False') == 'True'
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', 'trekemail-python.onrender.com,localhost,127.0.0.1').split(',')
 
+# Timezone Settings
+LANGUAGE_CODE = 'en-us'
+TIME_ZONE = 'Asia/Kolkata'
+USE_I18N = True
+USE_L10N = True
+USE_TZ = True
+
 INSTALLED_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
@@ -71,6 +78,5 @@ STATIC_URL = 'static/'
 STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 # Email Configuration (API Usage Only)
-# SMTP backend ki zaroorat nahi hai, hum 'requests' library use karenge
-EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD') # Brevo API Key
+EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.environ.get('DEFAULT_FROM_EMAIL', 'premdemo22@gmail.com')
