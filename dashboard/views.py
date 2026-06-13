@@ -3,7 +3,7 @@ import sys
 import pandas as pd
 import base64
 import traceback
-import requests  # Naya import
+import requests
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
@@ -40,7 +40,31 @@ def dashboard_view(request):
         return HttpResponse(f"Error: {str(e)}", status=500)
 
 
-# --- 2. Bulk Email Sending View (API Based - Render Compatible) ---
+# --- 2. Dashboard Stats API (Wapas add kar di hai) ---
+class DashboardStatsView(APIView):
+    def get(self, request):
+        try:
+            emails = EmailLog.objects.all()
+            return Response({
+                "total_sent": emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
+                "inbox_count": emails.filter(deliverability='Inbox').count(),
+                "spam_count": emails.filter(deliverability='Spam').count(),
+                "read_count": emails.filter(status='Read').count(),
+                "unread_count": emails.filter(status='Sent').count(),
+                "logs": [
+                    {
+                        'email_address': log.email_address,
+                        'status': log.status,
+                        'deliverability': log.deliverability,
+                        'date_sent': log.created_at.strftime('%Y-%m-%d')
+                    } for log in emails.order_by('-created_at')[:10]
+                ]
+            })
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
+
+
+# --- 3. Bulk Email Sending View (API Based) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -53,15 +77,12 @@ class SendBulkEmailView(APIView):
 
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
 
-            # API Setup
             url = "https://api.brevo.com/v3/smtp/email"
             headers = {
                 "accept": "application/json",
-                "api-key": settings.EMAIL_HOST_PASSWORD,  # Apni SMTP Key hi yahan API key hai
+                "api-key": settings.EMAIL_HOST_PASSWORD,
                 "content-type": "application/json"
             }
-
-            print(f"DEBUG: Starting API process for {len(recipients)} recipients...")
 
             for email in recipients:
                 close_old_connections()
@@ -76,29 +97,21 @@ class SendBulkEmailView(APIView):
                     "htmlContent": content
                 }
 
-                # Attachment Handle
                 if attachment:
                     payload["attachment"] = [{
                         "name": attachment.name,
                         "content": base64.b64encode(attachment.read()).decode('utf-8')
                     }]
 
-                # API Call (HTTPS - Render block nahi karega)
-                response = requests.post(url, json=payload, headers=headers)
-
-                if response.status_code == 201:
-                    print(f"DEBUG: Email sent via API to {email}")
-                else:
-                    print(f"DEBUG: API Error for {email}: {response.text}")
+                requests.post(url, json=payload, headers=headers)
 
             return Response({"message": "Campaign finished successfully"})
-
         except Exception as e:
             traceback.print_exc()
             return Response({"error": str(e)}, status=500)
 
 
-# --- 3. Tracking Pixel View ---
+# --- 4. Tracking Pixel View ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         try:
