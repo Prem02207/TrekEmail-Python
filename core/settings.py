@@ -24,6 +24,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
+    'whitenoise.middleware.WhiteNoiseMiddleware', # Render par static files serve karne ke liye zaroori hai
     'django.contrib.sessions.middleware.SessionMiddleware',
     'corsheaders.middleware.CorsMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -60,7 +61,11 @@ DATABASES = {
     }
 }
 
+# --- STATIC FILES CONFIGURATION ---
 STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+# WhiteNoise configuration for production
+STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
@@ -69,9 +74,9 @@ EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'premdemo22@gmail.com'        # Yahan apni real Gmail ID dalein
-EMAIL_HOST_PASSWORD = 'hrkungvphubbyraq'       # 16-digit App Password (no spaces)
-DEFAULT_FROM_EMAIL = 'premdemo22@gmail.com'     # Sender ID (Gmail ID hi rakhein)
+EMAIL_HOST_USER = 'premdemo22@gmail.com'
+EMAIL_HOST_PASSWORD = 'hrkungvphubbyraq'
+DEFAULT_FROM_EMAIL = 'premdemo22@gmail.com'
 
 # Optimization for Email Sending
-EMAIL_TIMEOUT = 30 # Seconds
+EMAIL_TIMEOUT = 30
