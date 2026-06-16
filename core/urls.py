@@ -1,24 +1,23 @@
 from django.contrib import admin
 from django.urls import path
-from dashboard.views import (
-    dashboard_view,
-    SendBulkEmailView,
-    DashboardStatsView,
-    TrackEmailView
-)
+# FilteredLogsView ko import mein add kar diya hai
+from dashboard.views import dashboard_view, DashboardStatsView, SendBulkEmailView, TrackEmailView, FilteredLogsView
 
 urlpatterns = [
     path('admin/', admin.site.urls),
 
-    # 1. Dashboard UI (Root URL)
-    path('', dashboard_view, name='dashboard'),
+    # 1. Dashboard UI
+    path('', dashboard_view, name='home'),
 
-    # 2. Bulk Email API (Matches the fetch URL in your HTML)
-    path('send-bulk-email/', SendBulkEmailView.as_view(), name='send-bulk-email'),
-
-    # 3. Stats API
+    # 2. Stats API
     path('api/stats/', DashboardStatsView.as_view(), name='dashboard-stats'),
 
-    # 4. Tracking Pixel (Matches the .png extension)
-    path('track/<str:log_id>.png/', TrackEmailView.as_view(), name='track-email'),
+    # 3. Filtered Logs API (Date wise search ke liye)
+    path('api/filtered-logs/', FilteredLogsView.as_view(), name='filtered-logs'),
+
+    # 4. Bulk Email API
+    path('send-bulk-email/', SendBulkEmailView.as_view(), name='send-bulk-email'),
+
+    # 5. Tracking
+    path('track/<str:log_id>/', TrackEmailView.as_view(), name='track-email'),
 ]
