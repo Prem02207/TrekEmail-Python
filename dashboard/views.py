@@ -37,7 +37,6 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
 
     for email in recipient_list:
         try:
-            # Status hamesha 'Sent' hi rahega jab email jayegi
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
@@ -75,20 +74,22 @@ class FilteredLogsView(APIView):
         return Response({"logs": logs})
 
 
-# --- 4. Tracking Pixel ---
+# --- 4. Tracking Pixel (FULLY UPDATED) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
-        # 1. Cache-busting headers (Taaki server ko request mile)
+        # 1. User Agent check
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
 
-        # User Agent check to avoid auto-reads from proxies
-        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        # GoogleImageProxy aur dusre common bots ke liye simple response
         if 'GoogleImageProxy' in user_agent:
             return HttpResponse(gif_data, content_type="image/gif")
 
+        # 2. Stronger Cache Bypassing (Ye ensure karega ki request server tak aaye)
         response = HttpResponse(gif_data, content_type="image/gif")
         response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
         response['Pragma'] = 'no-cache'
+        response['Expires'] = 'Sat, 01 Jan 2000 00:00:00 GMT'
 
         clean_id = str(log_id).replace('.png', '')
         try:
@@ -96,7 +97,7 @@ class TrackEmailView(APIView):
             # Sirf tabhi update karein agar status 'Sent' ho (Unread)
             if log.status == 'Sent':
                 log.status = 'Read'
-                log.save(update_fields=['status'])
+                log.save(update_fields=['status'])  # Sirf status field update karein
         except Exception as e:
             print(f"Tracking error: {e}")
 
