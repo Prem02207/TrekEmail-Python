@@ -53,7 +53,7 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
             print(f"Error: {e}")
 
 
-# --- 3. Filtered Logs API (Updated) ---
+# --- 3. Filtered Logs API ---
 class FilteredLogsView(APIView):
     def get(self, request):
         close_old_connections()
@@ -65,8 +65,8 @@ class FilteredLogsView(APIView):
 
         logs = [{
             'email_address': log.email_address,
-            'status': 'Sent',  # Dashboard mein hamesha Sent dikhega
-            'mark': log.status,  # Yahan se Read/Unread update hoga
+            'status': 'Sent',
+            'mark': log.status,
             'deliverability': log.deliverability,
             'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
@@ -74,29 +74,32 @@ class FilteredLogsView(APIView):
         return Response({"logs": logs})
 
 
-# --- 4. Tracking Pixel (Updated with User-Agent Check) ---
+# --- 4. Tracking Pixel (Updated with Stronger Cache Bypassing) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
+        # 1. User Agent check
         user_agent = request.META.get('HTTP_USER_AGENT', '')
-
-        # Transparent GIF base64
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
 
-        # Google Proxy check (Pre-fetching rokne ke liye)
         if 'GoogleImageProxy' in user_agent:
             return HttpResponse(gif_data, content_type="image/gif")
 
+        # 2. Stronger Cache Bypassing
         response = HttpResponse(gif_data, content_type="image/gif")
-        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
+        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = 'Sat, 01 Jan 2000 00:00:00 GMT'
 
         clean_id = str(log_id).replace('.png', '')
         try:
             log = EmailLog.objects.get(id=clean_id)
+            # Sirf tabhi update karein agar status 'Sent' ho
             if log.status == 'Sent':
                 log.status = 'Read'
-                log.save()
-        except:
-            pass
+                log.save(update_fields=['status'])
+        except Exception as e:
+            print(f"Tracking error: {e}")
+
         return response
 
 
