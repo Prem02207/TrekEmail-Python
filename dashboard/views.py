@@ -3,6 +3,7 @@ import base64
 import requests
 import time
 import traceback
+from django.utils import timezone  # Timezone handling ke liye import
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
@@ -94,13 +95,13 @@ class FilteredLogsView(APIView):
         if selected_date and selected_date != 'all':
             logs_queryset = logs_queryset.filter(created_at__date=selected_date)
 
+        # Timezone convert karke sahi format mein data bhej rahe hain
         logs = [{
             'email_address': log.email_address,
             'status': log.status,
             'deliverability': log.deliverability,
             'mark': log.status,
-            # Yahan hum exact format set kar rahe hain
-            'date_sent': log.created_at.strftime('%Y-%m-%d %H:%M')
+            'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
 
         return Response({"logs": logs})
@@ -134,7 +135,7 @@ class TrackEmailView(APIView):
             log = EmailLog.objects.get(id=clean_id)
             if log.status != 'Read':
                 log.status = 'Read'
-                log.save() # Yeh important hai taaki database update ho
+                log.save()
         except:
             pass
         return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),

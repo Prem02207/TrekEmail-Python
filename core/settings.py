@@ -6,6 +6,10 @@ SECRET_KEY = 'django-insecure-z=d!p$77#6-e&y^%p1l_r#x^0#y#x1k6q78d@a7z_r8m1o(0=u
 DEBUG = False
 ALLOWED_HOSTS = os.environ.get('ALLOWED_HOSTS', '127.0.0.1,localhost,trekemail-python.onrender.com').split(',')
 
+# --- TIME ZONE CONFIGURATION ---
+TIME_ZONE = 'Asia/Kolkata'
+USE_TZ = True
+
 INSTALLED_APPS = [
     'django.contrib.admin', 'django.contrib.auth', 'django.contrib.contenttypes',
     'django.contrib.sessions', 'django.contrib.messages', 'django.contrib.staticfiles',
@@ -56,6 +60,6 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 
 # --- BREVO API CONFIGURATION ---
 BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
-DEFAULT_FROM_EMAIL = 'premdemo22@gmail.com' # Yahan fix kar diya hai
+DEFAULT_FROM_EMAIL = 'premdemo22@gmail.com'
 
 EMAIL_TIMEOUT = 120
