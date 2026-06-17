@@ -99,7 +99,7 @@ class FilteredLogsView(APIView):
             'status': log.status,
             'deliverability': log.deliverability,
             'mark': log.status,
-            # Date + Time (HH:MM)
+            # Yahan hum exact format set kar rahe hain
             'date_sent': log.created_at.strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
 
@@ -133,10 +133,9 @@ class TrackEmailView(APIView):
         try:
             log = EmailLog.objects.get(id=clean_id)
             if log.status != 'Read':
-                log.status = 'Read' # Status update ho raha hai
-                log.save()
+                log.status = 'Read'
+                log.save() # Yeh important hai taaki database update ho
         except:
             pass
-        # Browser cache se bachne ke liye image response
         return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
                             content_type="image/gif")

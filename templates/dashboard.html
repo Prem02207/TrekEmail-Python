@@ -115,9 +115,11 @@
                     const row = `<tr>
                         <td class="p-3">${log.email_address}</td>
                         <td class="p-3">${log.status}</td>
-                        <td class="p-3"><span class="px-2 py-1 rounded text-[10px] font-bold ${markClass}">${markText}</span></td>
+                        <td class="p-3">
+                            <span class="px-2 py-1 rounded text-[10px] font-bold ${markClass}">${markText}</span>
+                        </td>
                         <td class="p-3">${log.deliverability}</td>
-                        <td class="p-3">${log.date_sent}</td>
+                        <td class="p-3 text-gray-400">${log.date_sent}</td>
                     </tr>`;
                     tableBody.innerHTML += row;
                 });
