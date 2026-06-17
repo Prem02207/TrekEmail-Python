@@ -108,6 +108,7 @@
                 const tableBody = document.querySelector('#log-table');
                 tableBody.innerHTML = '';
                 data.logs.forEach(log => {
+                    // Agar status 'Read' hai to Read dikhao, varna Unread
                     const isRead = log.mark === 'Read';
                     const markText = isRead ? 'Read' : 'Unread';
                     const markClass = isRead ? 'bg-green-500 text-white' : 'bg-red-500 text-white';

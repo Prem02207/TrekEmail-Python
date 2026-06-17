@@ -37,7 +37,7 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
 
     for email in recipient_list:
         try:
-            # Email bhejne se pehle database entry
+            # Status hamesha 'Sent' hi rahega jab email jayegi
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
@@ -75,34 +75,31 @@ class FilteredLogsView(APIView):
         return Response({"logs": logs})
 
 
-# --- 4. Tracking Pixel (Optimized with Bot Filtering) ---
+# --- 4. Tracking Pixel ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
-        # 1. User Agent Check
-        user_agent = request.META.get('HTTP_USER_AGENT', '')
-
-        # In bots se request aane par hum status update nahi karenge
-        bot_keywords = ['GoogleImageProxy', 'Outlook', 'BingPreview', 'Yahoo', 'Twitterbot', 'AppleWebKit']
-
+        # 1. Cache-busting headers (Taaki server ko request mile)
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
 
-        clean_id = str(log_id).replace('.png', '')
+        # User Agent check to avoid auto-reads from proxies
+        user_agent = request.META.get('HTTP_USER_AGENT', '')
+        if 'GoogleImageProxy' in user_agent:
+            return HttpResponse(gif_data, content_type="image/gif")
 
+        response = HttpResponse(gif_data, content_type="image/gif")
+        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
+        response['Pragma'] = 'no-cache'
+
+        clean_id = str(log_id).replace('.png', '')
         try:
             log = EmailLog.objects.get(id=clean_id)
-
-            # Sirf tabhi update karein agar status 'Sent' ho AND koi bot na ho
-            if log.status == 'Sent' and not any(bot.lower() in user_agent.lower() for bot in bot_keywords):
+            # Sirf tabhi update karein agar status 'Sent' ho (Unread)
+            if log.status == 'Sent':
                 log.status = 'Read'
                 log.save(update_fields=['status'])
         except Exception as e:
             print(f"Tracking error: {e}")
 
-        # Response hamesha pixel image hi rahega
-        response = HttpResponse(gif_data, content_type="image/gif")
-        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
-        response['Pragma'] = 'no-cache'
-        response['Expires'] = 'Sat, 01 Jan 2000 00:00:00 GMT'
         return response
 
 
