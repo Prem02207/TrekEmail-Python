@@ -38,7 +38,6 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
     for email in recipient_list:
         try:
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
-            # UPDATED: Removed trailing slash
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
 
             html_content = f"{body} <div style='position:absolute; opacity:0; height:0; width:0; overflow:hidden;'><img src='{pixel_url}' width='1' height='1' /></div>"
@@ -81,9 +80,9 @@ class TrackEmailView(APIView):
     def get(self, request, log_id):
         user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
 
-        print(f"DEBUG: User-Agent received: {user_agent}")
-
-        bot_keywords = ['brevo', 'googleimageproxy', 'outlook', 'bingpreview', 'proxy', 'redirection-images']
+        # Sirf "googleimageproxy" ya "bing" jaise bade bots ko block karein
+        # "brevo" ko hata diya hai taaki tracking trigger ho sake
+        bot_keywords = ['googleimageproxy', 'bingpreview', 'proxy', 'redirection-images']
 
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
         response = HttpResponse(gif_data, content_type="image/gif")
@@ -95,7 +94,6 @@ class TrackEmailView(APIView):
         is_bot = any(bot in user_agent for bot in bot_keywords)
 
         if not is_bot:
-            # UPDATED: Clean ID logic
             clean_id = str(log_id).replace('.png', '').replace('/', '')
             try:
                 log = EmailLog.objects.get(id=clean_id)
@@ -104,7 +102,7 @@ class TrackEmailView(APIView):
                     log.save(update_fields=['status'])
                     print(f"SUCCESS: Log {clean_id} updated to Read.")
             except Exception as e:
-                print(f"Tracking error for {clean_id}: {e}")
+                print(f"Tracking error: {e}")
         else:
             print(f"SKIPPED: Bot ignored: {user_agent}")
 
