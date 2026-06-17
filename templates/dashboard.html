@@ -108,17 +108,15 @@
                 const tableBody = document.querySelector('#log-table');
                 tableBody.innerHTML = '';
                 data.logs.forEach(log => {
-                    const markDisplay = log.mark === 'Read' ? 'Read' : 'Unread';
-                    const markClass = log.mark === 'Read' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600';
+                    const markText = (log.mark === 'Read') ? 'Read' : 'Unread';
+                    const markColor = (log.mark === 'Read') ? 'text-green-600' : 'text-gray-400';
 
                     const row = `<tr>
                         <td class="p-3">${log.email_address}</td>
-                        <td class="p-3 font-semibold text-blue-600">${log.status}</td>
-                        <td class="p-3">
-                            <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${markClass}">${markDisplay}</span>
-                        </td>
+                        <td class="p-3">${log.status}</td>
+                        <td class="p-3 font-bold ${markColor}">${markText}</td>
                         <td class="p-3">${log.deliverability}</td>
-                        <td class="p-3 text-gray-400">${log.date_sent || ''}</td>
+                        <td class="p-3">${log.date_sent}</td>
                     </tr>`;
                     tableBody.innerHTML += row;
                 });
@@ -167,7 +165,6 @@
             } catch (err) { console.error(err); }
         }
 
-        // Updated interval to 5 seconds
         setInterval(loadStats, 5000);
         loadStats();
     </script>

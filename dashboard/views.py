@@ -84,7 +84,7 @@ class DashboardStatsView(APIView):
         })
 
 
-# --- 3. Filtered Logs API (Updated with Time) ---
+# --- 3. Filtered Logs API (Time formatting) ---
 class FilteredLogsView(APIView):
     def get(self, request):
         close_old_connections()
@@ -98,8 +98,9 @@ class FilteredLogsView(APIView):
             'email_address': log.email_address,
             'status': log.status,
             'deliverability': log.deliverability,
-            'mark': log.status,
-            'date_sent': log.created_at.strftime('%Y-%m-%d %H:%M')  # Yahan Date + Time set hai
+            'mark': log.status,  # Yahan 'Sent' ya 'Read' aayega
+            # Sirf time dikhane ke liye format
+            'date_sent': log.created_at.strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
 
         return Response({"logs": logs})
@@ -124,7 +125,7 @@ class SendBulkEmailView(APIView):
             return Response({"error": str(e)}, status=500)
 
 
-# --- 5. Tracking Pixel (Updated with Status Save) ---
+# --- 5. Tracking Pixel ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         close_old_connections()
@@ -132,10 +133,9 @@ class TrackEmailView(APIView):
         try:
             log = EmailLog.objects.get(id=clean_id)
             if log.status != 'Read':
-                log.status = 'Read'
-                log.save()  # Status save ho raha hai
+                log.status = 'Read' # Status update ho raha hai
+                log.save()
         except:
             pass
-        # Browser cache se bachne ke liye image response
         return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
                             content_type="image/gif")
