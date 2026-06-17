@@ -38,9 +38,9 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
     for email in recipient_list:
         try:
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
-            pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
+            # UPDATED: Removed trailing slash
+            pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
 
-            # UPDATED: Changed style to ensure better tracking pixel compatibility with email clients
             html_content = f"{body} <div style='position:absolute; opacity:0; height:0; width:0; overflow:hidden;'><img src='{pixel_url}' width='1' height='1' /></div>"
 
             payload = {
@@ -76,30 +76,27 @@ class FilteredLogsView(APIView):
         return Response({"logs": logs})
 
 
-# --- 4. Tracking Pixel (FULLY UPDATED WITH DEBUGGING) ---
+# --- 4. Tracking Pixel (FULLY UPDATED) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
 
-        # Debugging: Render logs mein check karne ke liye
         print(f"DEBUG: User-Agent received: {user_agent}")
 
-        # Bot filtering
         bot_keywords = ['brevo', 'googleimageproxy', 'outlook', 'bingpreview', 'proxy', 'redirection-images']
 
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
         response = HttpResponse(gif_data, content_type="image/gif")
 
-        # Strict No-Cache headers
         response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response['Pragma'] = 'no-cache'
         response['Expires'] = '0'
 
-        # Logic: Agar bot nahi hai, tabhi update karein
         is_bot = any(bot in user_agent for bot in bot_keywords)
 
         if not is_bot:
-            clean_id = str(log_id).replace('.png', '')
+            # UPDATED: Clean ID logic
+            clean_id = str(log_id).replace('.png', '').replace('/', '')
             try:
                 log = EmailLog.objects.get(id=clean_id)
                 if log.status == 'Sent':
@@ -107,7 +104,7 @@ class TrackEmailView(APIView):
                     log.save(update_fields=['status'])
                     print(f"SUCCESS: Log {clean_id} updated to Read.")
             except Exception as e:
-                print(f"Tracking error: {e}")
+                print(f"Tracking error for {clean_id}: {e}")
         else:
             print(f"SKIPPED: Bot ignored: {user_agent}")
 
