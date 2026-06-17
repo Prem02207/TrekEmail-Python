@@ -74,33 +74,34 @@ class FilteredLogsView(APIView):
         return Response({"logs": logs})
 
 
-# --- 4. Tracking Pixel (FULLY UPDATED) ---
+# --- 4. Tracking Pixel (FULLY UPDATED WITH BOT FILTERING) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
-        # 1. Tracking pixel GIF
-        gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
-
-        # 2. Bot filtering: Kuch bots automatically image load karte hain, unhe ignore karein
         user_agent = request.META.get('HTTP_USER_AGENT', '')
-        if 'GoogleImageProxy' in user_agent or 'Outlook' in user_agent:
-            return HttpResponse(gif_data, content_type="image/gif")
 
-        # 3. Cache-Control: Sabse zaroori taaki browser image ko store na kare
+        # Bot filtering: Agar Brevo ya Google ka bot hai, toh ignore karein
+        bot_keywords = ['Brevo', 'GoogleImageProxy', 'Outlook', 'BingPreview', 'Yahoo', 'Twitterbot']
+
+        gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
         response = HttpResponse(gif_data, content_type="image/gif")
+
+        # Cache-Control headers taaki browser image ko store na kare
         response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
         response['Pragma'] = 'no-cache'
         response['Expires'] = 'Sat, 01 Jan 2000 00:00:00 GMT'
 
-        clean_id = str(log_id).replace('.png', '')
-        try:
-            log = EmailLog.objects.get(id=clean_id)
+        # Check karein ki ye koi known bot toh nahi
+        is_bot = any(bot.lower() in user_agent.lower() for bot in bot_keywords)
 
-            # SIRF TABHI 'Read' mark karein agar pehle 'Sent' tha
-            if log.status == 'Sent':
-                log.status = 'Read'
-                log.save(update_fields=['status'])
-        except Exception as e:
-            print(f"Tracking error: {e}")
+        if not is_bot:
+            clean_id = str(log_id).replace('.png', '')
+            try:
+                log = EmailLog.objects.get(id=clean_id)
+                if log.status == 'Sent':
+                    log.status = 'Read'
+                    log.save(update_fields=['status'])
+            except Exception as e:
+                print(f"Tracking error: {e}")
 
         return response
 
@@ -118,18 +119,3 @@ class SendBulkEmailView(APIView):
             return JsonResponse({"status": "Email processed!"})
         except Exception:
             return Response({"error": "Failed"}, status=500)
-
-
-# --- 6. Stats API ---
-class DashboardStatsView(APIView):
-    def get(self, request):
-        logs = EmailLog.objects.all()
-        return Response({
-            "total_sent": logs.count(),
-            "inbox_count": logs.filter(deliverability='Inbox').count(),
-            "spam_count": logs.filter(deliverability='Spam').count(),
-            "read_count": logs.filter(status='Read').count(),
-            "unread_count": logs.filter(status='Sent').count(),
-            "date_stats": list(EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
-                count=Count('id')).order_by('-date'))
-        })
