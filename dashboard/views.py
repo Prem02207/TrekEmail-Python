@@ -3,7 +3,7 @@ import base64
 import requests
 import time
 import traceback
-from django.utils import timezone  # Timezone handling ke liye import
+from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
@@ -41,6 +41,7 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
     for email in recipient_list:
         try:
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
+            # Tracking pixel URL (log ID ke sath)
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
@@ -95,7 +96,6 @@ class FilteredLogsView(APIView):
         if selected_date and selected_date != 'all':
             logs_queryset = logs_queryset.filter(created_at__date=selected_date)
 
-        # Timezone convert karke sahi format mein data bhej rahe hain
         logs = [{
             'email_address': log.email_address,
             'status': log.status,
@@ -138,5 +138,11 @@ class TrackEmailView(APIView):
                 log.save()
         except:
             pass
-        return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
-                            content_type="image/gif")
+
+        # Cache-Control headers taaki har bar server par request jaye aur status update ho
+        response = HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
+                                content_type="image/gif")
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
