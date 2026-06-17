@@ -1,5 +1,6 @@
 from pathlib import Path
 import os
+import dj_database_url  # Import added
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = 'django-insecure-z=d!p$77#6-e&y^%p1l_r#x^0#y#x1k6q78d@a7z_r8m1o(0=u'
@@ -43,7 +44,14 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'core.wsgi.application'
-DATABASES = {'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': BASE_DIR / 'db.sqlite3'}}
+
+# --- DATABASE CONFIGURATION (PostgreSQL) ---
+DATABASES = {
+    'default': dj_database_url.config(
+        default=os.environ.get('DATABASE_URL'),
+        conn_max_age=600
+    )
+}
 
 STATIC_URL = 'static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
