@@ -80,4 +80,4 @@ EMAIL_HOST_PASSWORD = os.environ.get('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.environ.get('EMAIL_HOST_USER')
 
 # Optimization for Email Sending
-EMAIL_TIMEOUT = 30
+EMAIL_TIMEOUT = 120
