@@ -84,7 +84,7 @@ class DashboardStatsView(APIView):
         })
 
 
-# --- 3. Filtered Logs API (Time formatting) ---
+# --- 3. Filtered Logs API ---
 class FilteredLogsView(APIView):
     def get(self, request):
         close_old_connections()
@@ -98,8 +98,8 @@ class FilteredLogsView(APIView):
             'email_address': log.email_address,
             'status': log.status,
             'deliverability': log.deliverability,
-            'mark': log.status,  # Yahan 'Sent' ya 'Read' aayega
-            # Sirf time dikhane ke liye format
+            'mark': log.status,
+            # Date + Time (HH:MM)
             'date_sent': log.created_at.strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
 
@@ -137,5 +137,6 @@ class TrackEmailView(APIView):
                 log.save()
         except:
             pass
+        # Browser cache se bachne ke liye image response
         return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
                             content_type="image/gif")
