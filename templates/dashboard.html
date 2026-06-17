@@ -49,7 +49,6 @@
                                     <th class="p-3">Status</th>
                                     <th class="p-3">Mark</th>
                                     <th class="p-3">Delivery</th>
-                                    <th class="p-3">Date</th>
                                 </tr>
                             </thead>
                             <tbody id="log-table" class="text-gray-600 divide-y"></tbody>
@@ -89,6 +88,7 @@
     <script>
         let isFiltered = false;
 
+        // Form Submit
         document.getElementById('emailForm').onsubmit = async (e) => {
             e.preventDefault();
             const btn = document.getElementById('sendBtn');
@@ -103,20 +103,37 @@
             e.target.reset();
         };
 
+        // Yeh function aapne manga tha
+        function loadLogs(date = 'all') {
+            fetch(`/api/filtered-logs/?date=${date}`)
+            .then(response => response.json())
+            .then(data => {
+                const tableBody = document.querySelector('#log-table');
+                tableBody.innerHTML = '';
+                data.logs.forEach(log => {
+                    const row = `<tr>
+                        <td class="p-3">${log.email_address}</td>
+                        <td class="p-3">${log.status}</td>
+                        <td class="p-3">${log.mark}</td>
+                        <td class="p-3">${log.deliverability}</td>
+                    </tr>`;
+                    tableBody.innerHTML += row;
+                });
+            });
+        }
+
         async function applyFilter() {
             let date = document.getElementById('dateFilter').value;
-            if (date === 'all' || date === '') {
-                isFiltered = false;
-                date = '';
-                document.getElementById('dateFilter').value = '';
-            } else {
-                isFiltered = true;
-            }
+            isFiltered = (date !== '' && date !== 'all');
 
+            // Stats aur Logs dono update karein
             const res = await fetch(`/api/stats/?date=${date}`);
             const data = await res.json();
 
+            // UI Update
             updateUI(data);
+            // Logs bhi load karein
+            loadLogs(date || 'all');
         }
 
         function updateUI(data) {
@@ -125,53 +142,22 @@
             document.getElementById('spam').innerText = data.spam_count || 0;
             document.getElementById('read').innerText = data.read_count || 0;
             document.getElementById('unread').innerText = data.unread_count || 0;
-
-            document.getElementById('log-table').innerHTML = data.logs.map(log => `
-                <tr>
-                    <td class="p-3 truncate max-w-[100px]">${log.email_address}</td>
-                    <td class="p-3 font-semibold text-blue-600">${log.status}</td>
-                    <td class="p-3"><span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${log.mark === 'Read' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">${log.mark === 'Sent' ? 'Unread' : log.mark}</span></td>
-                    <td class="p-3">${log.deliverability}</td>
-                    <td class="p-3 text-gray-400">${log.date_sent}</td>
-                </tr>
-            `).join('');
         }
 
-        async function filterByDate(date) {
+        function filterByDate(date) {
             document.getElementById('dateFilter').value = date;
-            await applyFilter();
+            applyFilter();
         }
 
         async function loadStats() {
             try {
-                if (!isFiltered) {
-                    const res = await fetch('/api/stats/');
-                    const data = await res.json();
-                    updateUI(data);
-
-                    if (data.date_stats) {
-                        let dateStatsHtml = `
-                            <div class="flex justify-between border-b pb-1 cursor-pointer hover:bg-gray-100 p-1 rounded font-bold text-blue-600"
-                                 onclick="filterByDate('all')">
-                                <span>Show All</span>
-                                <span>&times;</span>
-                            </div>`;
-
-                        dateStatsHtml += data.date_stats.map(ds => `
-                            <div class="flex justify-between border-b pb-1 cursor-pointer hover:bg-gray-100 p-1 rounded"
-                                 onclick="filterByDate('${ds.date}')">
-                                <span>${ds.date}</span>
-                                <span class="font-bold">${ds.count}</span>
-                            </div>
-                        `).join('');
-
-                        document.getElementById('date-stats-container').innerHTML = dateStatsHtml;
-                    }
-                }
+                const res = await fetch('/api/stats/');
+                const data = await res.json();
+                updateUI(data);
+                loadLogs('all'); // Initally sab load karein
             } catch (err) { console.error(err); }
         }
 
-        // Refresh rate changed from 5000 to 30000 (30 seconds)
         setInterval(loadStats, 30000);
         loadStats();
     </script>
