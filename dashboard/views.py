@@ -35,18 +35,15 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
         "Content-Type": "application/json"
     }
 
-    # DEBUG: Check karein ki settings se email aa raha hai ya nahi
-    print(f"DEBUG: Sender Email is: {settings.DEFAULT_FROM_EMAIL}")
-
     for email in recipient_list:
         try:
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
-            # Yahan "sender" key mein name aur email dono dene hote hain
+            # Updated payload with fixed sender information
             payload = {
-                "sender": {"email": settings.DEFAULT_FROM_EMAIL, "name": "YourAppName"},
+                "sender": {"email": "premdemo22@gmail.com", "name": "Prem Demo"},
                 "to": [{"email": email}],
                 "subject": subject,
                 "htmlContent": html_content
