@@ -84,7 +84,7 @@ class DashboardStatsView(APIView):
         })
 
 
-# --- 3. Filtered Logs API (Updated) ---
+# --- 3. Filtered Logs API (Updated with Time) ---
 class FilteredLogsView(APIView):
     def get(self, request):
         close_old_connections()
@@ -99,7 +99,7 @@ class FilteredLogsView(APIView):
             'status': log.status,
             'deliverability': log.deliverability,
             'mark': log.status,
-            'date_sent': log.created_at.strftime('%Y-%m-%d')
+            'date_sent': log.created_at.strftime('%Y-%m-%d %H:%M')  # Yahan Date + Time set hai
         } for log in logs_queryset[:20]]
 
         return Response({"logs": logs})
@@ -113,7 +113,6 @@ class SendBulkEmailView(APIView):
             manual_email = request.POST.get('manual_email')
             subject = request.POST.get('subject')
             body = request.POST.get('body')
-            attachment = request.FILES.get('attachment')
 
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
 
@@ -125,7 +124,7 @@ class SendBulkEmailView(APIView):
             return Response({"error": str(e)}, status=500)
 
 
-# --- 5. Tracking Pixel ---
+# --- 5. Tracking Pixel (Updated with Status Save) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         close_old_connections()
@@ -134,8 +133,9 @@ class TrackEmailView(APIView):
             log = EmailLog.objects.get(id=clean_id)
             if log.status != 'Read':
                 log.status = 'Read'
-                log.save()
+                log.save()  # Status save ho raha hai
         except:
             pass
+        # Browser cache se bachne ke liye image response
         return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
                             content_type="image/gif")
