@@ -2,7 +2,7 @@ import pandas as pd
 import base64
 import requests
 import time
-import traceback  # Updated: Error tracing ke liye
+import traceback
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
@@ -35,14 +35,18 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
         "Content-Type": "application/json"
     }
 
+    # DEBUG: Check karein ki settings se email aa raha hai ya nahi
+    print(f"DEBUG: Sender Email is: {settings.DEFAULT_FROM_EMAIL}")
+
     for email in recipient_list:
         try:
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
+            # Yahan "sender" key mein name aur email dono dene hote hain
             payload = {
-                "sender": {"email": settings.DEFAULT_FROM_EMAIL},
+                "sender": {"email": settings.DEFAULT_FROM_EMAIL, "name": "YourAppName"},
                 "to": [{"email": email}],
                 "subject": subject,
                 "htmlContent": html_content
@@ -94,7 +98,6 @@ class FilteredLogsView(APIView):
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
-            # Debug prints add kiye hain
             print("Files received:", request.FILES)
             print("POST data:", request.POST)
 
@@ -114,7 +117,6 @@ class SendBulkEmailView(APIView):
             return JsonResponse({"status": "Email processed!"})
 
         except Exception as e:
-            # Error ka detail trace print karega
             traceback.print_exc()
             return Response({"error": str(e)}, status=500)
 
