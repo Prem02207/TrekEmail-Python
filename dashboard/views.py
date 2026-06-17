@@ -9,6 +9,8 @@ from django.shortcuts import render
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.db import close_old_connections
+from django.db.models import Count
+from django.db.models.functions import TruncDate
 from .models import EmailLog
 
 
@@ -41,7 +43,6 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
-            # Updated payload with fixed sender information
             payload = {
                 "sender": {"email": "premdemo22@gmail.com", "name": "Prem Demo"},
                 "to": [{"email": email}],
@@ -58,12 +59,18 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
             print(f"Error sending to {email}: {e}")
 
 
-# --- 2. Dashboard Stats API ---
+# --- 2. Dashboard Stats API (Updated) ---
 class DashboardStatsView(APIView):
     def get(self, request):
         close_old_connections()
         selected_date = request.query_params.get('date')
         logs = EmailLog.objects.all()
+
+        # Date-wise stats for the sidebar
+        date_stats = EmailLog.objects.annotate(date=TruncDate('created_at')) \
+                                     .values('date') \
+                                     .annotate(count=Count('id')) \
+                                     .order_by('-date')
 
         if selected_date and selected_date != 'all':
             logs = logs.filter(created_at__date=selected_date)
@@ -74,6 +81,7 @@ class DashboardStatsView(APIView):
             "spam_count": logs.filter(deliverability='Spam').count(),
             "read_count": logs.filter(status='Read').count(),
             "unread_count": logs.filter(status='Sent').count(),
+            "date_stats": list(date_stats) # Frontend ko bhejne ke liye
         })
 
 
@@ -86,8 +94,13 @@ class FilteredLogsView(APIView):
         if selected_date and selected_date != 'all':
             logs_queryset = logs_queryset.filter(created_at__date=selected_date)
 
-        logs = [{'email_address': log.email_address, 'status': 'Sent', 'deliverability': log.deliverability,
-                 'mark': log.status} for log in logs_queryset[:20]]
+        logs = [{
+            'email_address': log.email_address,
+            'status': 'Sent',
+            'deliverability': log.deliverability,
+            'mark': log.status,
+            'date_sent': log.created_at.strftime('%Y-%m-%d') # Date added for table
+        } for log in logs_queryset[:20]]
         return Response({"logs": logs})
 
 
@@ -95,9 +108,6 @@ class FilteredLogsView(APIView):
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
-            print("Files received:", request.FILES)
-            print("POST data:", request.POST)
-
             csv_file = request.FILES.get('csv_file')
             manual_email = request.POST.get('manual_email')
             subject = request.POST.get('subject')

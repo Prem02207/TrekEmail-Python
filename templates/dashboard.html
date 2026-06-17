@@ -86,9 +86,6 @@
     </div>
 
     <script>
-        let isFiltered = false;
-
-        // Form Submit
         document.getElementById('emailForm').onsubmit = async (e) => {
             e.preventDefault();
             const btn = document.getElementById('sendBtn');
@@ -103,7 +100,6 @@
             e.target.reset();
         };
 
-        // Yeh function aapne manga tha
         function loadLogs(date = 'all') {
             fetch(`/api/filtered-logs/?date=${date}`)
             .then(response => response.json())
@@ -124,15 +120,9 @@
 
         async function applyFilter() {
             let date = document.getElementById('dateFilter').value;
-            isFiltered = (date !== '' && date !== 'all');
-
-            // Stats aur Logs dono update karein
             const res = await fetch(`/api/stats/?date=${date}`);
             const data = await res.json();
-
-            // UI Update
             updateUI(data);
-            // Logs bhi load karein
             loadLogs(date || 'all');
         }
 
@@ -154,7 +144,20 @@
                 const res = await fetch('/api/stats/');
                 const data = await res.json();
                 updateUI(data);
-                loadLogs('all'); // Initally sab load karein
+                loadLogs('all');
+
+                // Sidebar Dates List
+                if (data.date_stats) {
+                    let html = `<div onclick="applyFilter('')" class="cursor-pointer text-blue-600 font-bold border-b pb-1">Show All</div>`;
+                    data.date_stats.forEach(ds => {
+                        html += `
+                            <div class="flex justify-between cursor-pointer hover:bg-gray-100 p-1" onclick="filterByDate('${ds.date}')">
+                                <span>${ds.date}</span>
+                                <span class="font-bold">${ds.count}</span>
+                            </div>`;
+                    });
+                    document.getElementById('date-stats-container').innerHTML = html;
+                }
             } catch (err) { console.error(err); }
         }
 
