@@ -107,8 +107,10 @@
             .then(data => {
                 const tableBody = document.querySelector('#log-table');
                 tableBody.innerHTML = '';
+
+                // Naya logic yahan apply kiya gaya hai
                 data.logs.forEach(log => {
-                    // Agar status 'Read' hai to Read dikhao, varna Unread
+                    // Backend se aaya 'mark' ya 'status' field check karein
                     const isRead = log.mark === 'Read';
                     const markText = isRead ? 'Read' : 'Unread';
                     const markClass = isRead ? 'bg-green-500 text-white' : 'bg-red-500 text-white';
