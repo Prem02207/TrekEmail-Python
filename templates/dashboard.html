@@ -156,7 +156,7 @@
                 loadLogs(currentDate);
 
                 if (data.date_stats) {
-                    let html = `<div onclick="applyFilter('')" class="cursor-pointer text-blue-600 font-bold border-b pb-1">Show All</div>`;
+                    let html = `<div onclick="filterByDate('')" class="cursor-pointer text-blue-600 font-bold border-b pb-1">Show All</div>`;
                     data.date_stats.forEach(ds => {
                         html += `
                             <div class="flex justify-between cursor-pointer hover:bg-gray-100 p-1" onclick="filterByDate('${ds.date}')">
@@ -169,7 +169,11 @@
             } catch (err) { console.error(err); }
         }
 
-        setInterval(loadStats, 5000);
+        // Auto-refresh stats and logs every 5 seconds
+        setInterval(() => {
+            loadStats();
+        }, 5000);
+
         loadStats();
     </script>
 </body>

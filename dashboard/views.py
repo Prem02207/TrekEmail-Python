@@ -40,6 +40,7 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
 
     for email in recipient_list:
         try:
+            # Email bhejne ke waqt status 'Sent' set kiya gaya hai
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
@@ -128,19 +129,16 @@ class SendBulkEmailView(APIView):
 # --- 5. Tracking Pixel ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
-        # Cache ko bypass karne ke liye headers
-        response = HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
-                                content_type="image/gif")
-        response['Cache-Control'] = 'no-cache, no-store, must-revalidate, max-age=0'
-        response['Pragma'] = 'no-cache'
-        response['Expires'] = '0'
-
         clean_id = str(log_id).replace('.png', '')
         try:
             log = EmailLog.objects.get(id=clean_id)
-            if log.status != 'Read':
+            # Sirf tabhi status update karein agar mail 'Sent' status mein ho
+            if log.status == 'Sent':
                 log.status = 'Read'
-                log.save(update_fields=['status'])  # Status update
+                log.save()
         except:
             pass
-        return response
+
+        # Transparent GIF return karein
+        return HttpResponse(base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"),
+                            content_type="image/gif")
