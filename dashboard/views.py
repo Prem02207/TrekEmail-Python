@@ -39,8 +39,9 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
         try:
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
-            # Tracking pixel ko invisible div mein rakha gaya hai taaki bots kam trigger hon
-            html_content = f"{body} <div style='display:none; visibility:hidden;'><img src='{pixel_url}' width='1' height='1' /></div>"
+
+            # FINAL UPDATED: CSS styles added to hide tracking pixel from bots completely
+            html_content = f"{body} <div style='display:none; visibility:hidden; opacity:0; overflow:hidden; height:0; width:0;'><img src='{pixel_url}' width='1' height='1' /></div>"
 
             payload = {
                 "sender": {"email": "premdemo22@gmail.com", "name": "Prem Demo"},
