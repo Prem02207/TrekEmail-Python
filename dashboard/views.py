@@ -59,18 +59,17 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
             print(f"Error sending to {email}: {e}")
 
 
-# --- 2. Dashboard Stats API (Updated) ---
+# --- 2. Dashboard Stats API ---
 class DashboardStatsView(APIView):
     def get(self, request):
         close_old_connections()
         selected_date = request.query_params.get('date')
         logs = EmailLog.objects.all()
 
-        # Date-wise stats for the sidebar
         date_stats = EmailLog.objects.annotate(date=TruncDate('created_at')) \
-                                     .values('date') \
-                                     .annotate(count=Count('id')) \
-                                     .order_by('-date')
+            .values('date') \
+            .annotate(count=Count('id')) \
+            .order_by('-date')
 
         if selected_date and selected_date != 'all':
             logs = logs.filter(created_at__date=selected_date)
@@ -81,26 +80,28 @@ class DashboardStatsView(APIView):
             "spam_count": logs.filter(deliverability='Spam').count(),
             "read_count": logs.filter(status='Read').count(),
             "unread_count": logs.filter(status='Sent').count(),
-            "date_stats": list(date_stats) # Frontend ko bhejne ke liye
+            "date_stats": list(date_stats)
         })
 
 
-# --- 3. Filtered Logs API ---
+# --- 3. Filtered Logs API (Updated) ---
 class FilteredLogsView(APIView):
     def get(self, request):
         close_old_connections()
         selected_date = request.query_params.get('date')
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
+
         if selected_date and selected_date != 'all':
             logs_queryset = logs_queryset.filter(created_at__date=selected_date)
 
         logs = [{
             'email_address': log.email_address,
-            'status': 'Sent',
+            'status': log.status,
             'deliverability': log.deliverability,
             'mark': log.status,
-            'date_sent': log.created_at.strftime('%Y-%m-%d') # Date added for table
+            'date_sent': log.created_at.strftime('%Y-%m-%d')
         } for log in logs_queryset[:20]]
+
         return Response({"logs": logs})
 
 
@@ -114,13 +115,9 @@ class SendBulkEmailView(APIView):
             body = request.POST.get('body')
             attachment = request.FILES.get('attachment')
 
-            attach_data = attachment.read() if attachment else None
-            attach_name = attachment.name if attachment else None
-            attach_type = attachment.content_type if attachment else None
-
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
 
-            send_emails_task(recipients, subject, body, attach_data, attach_name, attach_type)
+            send_emails_task(recipients, subject, body, None, None, None)
             return JsonResponse({"status": "Email processed!"})
 
         except Exception as e:
