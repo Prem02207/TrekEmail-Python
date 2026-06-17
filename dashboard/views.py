@@ -1,24 +1,20 @@
 import pandas as pd
 import base64
-import traceback
+import requests  # API requests ke liye zaroori
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
 from django.conf import settings
 from django.http import HttpResponse, JsonResponse
-from django.core.mail import EmailMessage, get_connection
 from django.db import close_old_connections
-from django.db.models.functions import TruncDate
-from django.db.models import Count
 from .models import EmailLog
-
 
 # --- 1. Dashboard View ---
 def dashboard_view(request):
     emails = EmailLog.objects.all().order_by('-created_at')
     context = {
         'recent_emails': emails,
-        'total_sent': emails.filter(status='Sent').count() + emails.filter(status='Read').count(),
+        'total_sent': emails.filter(status__in=['Sent', 'Read']).count(),
         'inbox': emails.filter(deliverability='Inbox').count(),
         'spam': emails.filter(deliverability='Spam').count(),
         'read': emails.filter(status='Read').count(),
@@ -27,24 +23,36 @@ def dashboard_view(request):
     return render(request, 'dashboard.html', context)
 
 
-# --- Helper Function for Email Sending ---
+# --- Helper Function for Email Sending (API Based) ---
 def send_emails_task(recipient_list, subject, body, attach_data, attach_name, attach_type):
     close_old_connections()
-    try:
-        with get_connection() as connection:
-            for email in recipient_list:
-                try:
-                    log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
-                    pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
-                    content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
-                    msg = EmailMessage(subject, content, settings.DEFAULT_FROM_EMAIL, [email], connection=connection)
-                    msg.content_subtype = "html"
-                    if attach_data: msg.attach(attach_name, attach_data, attach_type)
-                    msg.send()
-                except Exception as e:
-                    print(f"Error sending to {email}: {e}")
-    except Exception as e:
-        print(f"DEBUG: Connection Error: {e}")
+    url = "https://api.brevo.com/v3/smtp/email"
+    headers = {
+        "api-key": settings.BREVO_API_KEY,  # Render ENV mein set karein
+        "Content-Type": "application/json"
+    }
+
+    for email in recipient_list:
+        try:
+            # Email Log create karein
+            log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
+            pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
+            html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
+
+            payload = {
+                "sender": {"email": settings.DEFAULT_FROM_EMAIL}, # Render ENV mein set karein
+                "to": [{"email": email}],
+                "subject": subject,
+                "htmlContent": html_content
+            }
+
+            # API Request bhej rahe hain
+            response = requests.post(url, json=payload, headers=headers)
+
+            if response.status_code not in [200, 201]:
+                print(f"Brevo API Error for {email}: {response.text}")
+        except Exception as e:
+            print(f"Error sending to {email}: {e}")
 
 
 # --- 2. Dashboard Stats API ---
@@ -86,13 +94,13 @@ class SendBulkEmailView(APIView):
             body = request.POST.get('body')
             attachment = request.FILES.get('attachment')
 
+            # Attachments ke liye logic yahan expand kiya ja sakta hai
             attach_data = attachment.read() if attachment else None
             attach_name = attachment.name if attachment else None
             attach_type = attachment.content_type if attachment else None
 
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
 
-            # Direct call for production (no threading)
             send_emails_task(recipients, subject, body, attach_data, attach_name, attach_type)
             return JsonResponse({"status": "Email processed!"})
         except Exception as e:
