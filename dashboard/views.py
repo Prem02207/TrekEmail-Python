@@ -1,7 +1,8 @@
 import pandas as pd
 import base64
 import requests
-import time  # Updated: Sleep ke liye import add kiya
+import time
+import traceback  # Updated: Error tracing ke liye
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
@@ -36,7 +37,6 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
 
     for email in recipient_list:
         try:
-            # Email Log create karein
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
@@ -48,10 +48,7 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
                 "htmlContent": html_content
             }
 
-            # API Request bhej rahe hain
             response = requests.post(url, json=payload, headers=headers)
-
-            # Updated: Har request ke baad 0.5s ka delay
             time.sleep(0.5)
 
             if response.status_code not in [200, 201]:
@@ -97,6 +94,10 @@ class FilteredLogsView(APIView):
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
+            # Debug prints add kiye hain
+            print("Files received:", request.FILES)
+            print("POST data:", request.POST)
+
             csv_file = request.FILES.get('csv_file')
             manual_email = request.POST.get('manual_email')
             subject = request.POST.get('subject')
@@ -111,7 +112,10 @@ class SendBulkEmailView(APIView):
 
             send_emails_task(recipients, subject, body, attach_data, attach_name, attach_type)
             return JsonResponse({"status": "Email processed!"})
+
         except Exception as e:
+            # Error ka detail trace print karega
+            traceback.print_exc()
             return Response({"error": str(e)}, status=500)
 
 
