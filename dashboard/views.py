@@ -39,7 +39,8 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
         try:
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png/"
-            html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
+            # Tracking pixel ko invisible div mein rakha gaya hai taaki bots kam trigger hon
+            html_content = f"{body} <div style='display:none; visibility:hidden;'><img src='{pixel_url}' width='1' height='1' /></div>"
 
             payload = {
                 "sender": {"email": "premdemo22@gmail.com", "name": "Prem Demo"},
@@ -77,30 +78,28 @@ class FilteredLogsView(APIView):
 # --- 4. Tracking Pixel (FULLY UPDATED) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
-        # 1. Tracking pixel GIF
+        # 1. Bot filtering (Case insensitive check)
+        user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
+        bot_keywords = ['brevo', 'googleimageproxy', 'outlook', 'bingpreview', 'proxy']
+
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
 
-        # 2. Bot filtering: Kuch bots automatically image load karte hain, unhe ignore karein
-        user_agent = request.META.get('HTTP_USER_AGENT', '')
-        if 'GoogleImageProxy' in user_agent or 'Outlook' in user_agent:
-            return HttpResponse(gif_data, content_type="image/gif")
-
-        # 3. Cache-Control: Sabse zaroori taaki browser image ko store na kare
+        # 2. Strict No-Cache headers (IMPORTANT)
         response = HttpResponse(gif_data, content_type="image/gif")
-        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, post-check=0, pre-check=0'
+        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
         response['Pragma'] = 'no-cache'
-        response['Expires'] = 'Sat, 01 Jan 2000 00:00:00 GMT'
+        response['Expires'] = '0'
 
-        clean_id = str(log_id).replace('.png', '')
-        try:
-            log = EmailLog.objects.get(id=clean_id)
-
-            # SIRF TABHI 'Read' mark karein agar pehle 'Sent' tha
-            if log.status == 'Sent':
-                log.status = 'Read'
-                log.save(update_fields=['status'])
-        except Exception as e:
-            print(f"Tracking error: {e}")
+        # 3. Only process if not a bot
+        if not any(bot in user_agent for bot in bot_keywords):
+            clean_id = str(log_id).replace('.png', '')
+            try:
+                log = EmailLog.objects.get(id=clean_id)
+                if log.status == 'Sent':
+                    log.status = 'Read'
+                    log.save(update_fields=['status'])
+            except:
+                pass
 
         return response
 
