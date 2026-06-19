@@ -25,7 +25,8 @@ def send_emails_task(recipient_list, subject, body):
 
     for email in recipient_list:
         try:
-            log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
+            # Default status 'Unread' rakha hai, 'Sent' nahi
+            log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
@@ -40,7 +41,7 @@ def send_emails_task(recipient_list, subject, body):
         except Exception as e:
             print(f"Error: {e}")
 
-# --- 3. Filtered Logs API (UPDATED) ---
+# --- 3. Filtered Logs API ---
 class FilteredLogsView(APIView):
     def get(self, request):
         selected_date = request.query_params.get('date')
@@ -51,22 +52,27 @@ class FilteredLogsView(APIView):
         logs = [{
             'email_address': log.email_address,
             'status': log.deliverability,
-            'mark': 'Read' if log.status == 'Read' else 'Unread', # Logic updated
+            'mark': 'Read' if log.status == 'Read' else 'Unread', # Dynamic logic
             'deliverability': log.deliverability,
             'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
         return Response({"logs": logs})
 
-# --- 4. Tracking Pixel ---
+# --- 4. Tracking Pixel (With Bot Filter) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
-        try:
-            log = EmailLog.objects.get(id=log_id.replace('.png', ''))
-            if log.status == 'Sent':
-                log.status = 'Read'
-                log.save()
-        except: pass
+        user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
+        bot_keywords = ['googleimageproxy', 'bingpreview', 'cortex', 'proxy', 'scanner']
+        is_bot = any(bot in user_agent for bot in bot_keywords)
+
+        if not is_bot:
+            try:
+                log = EmailLog.objects.get(id=log_id.replace('.png', ''))
+                if log.status == 'Unread': # Sirf tab update karein agar 'Unread' hai
+                    log.status = 'Read'
+                    log.save(update_fields=['status'])
+            except: pass
         return HttpResponse(gif_data, content_type="image/gif")
 
 # --- 5. Bulk Email Sending ---
@@ -83,7 +89,7 @@ class SendBulkEmailView(APIView):
         except Exception:
             return Response({"error": "Failed"}, status=500)
 
-# --- 6. Stats API (UPDATED) ---
+# --- 6. Stats API ---
 class DashboardStatsView(APIView):
     def get(self, request):
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
@@ -92,13 +98,13 @@ class DashboardStatsView(APIView):
             "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
             "spam_count": logs_queryset.filter(deliverability='Spam').count(),
             "read_count": logs_queryset.filter(status='Read').count(),
-            "unread_count": logs_queryset.filter(status='Sent').count(),
+            "unread_count": logs_queryset.filter(status='Unread').count(),
             "date_stats": list(EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
                 count=Count('id')).order_by('-date')),
             "logs": [{
                 'email_address': log.email_address,
                 'status': log.deliverability,
-                'mark': 'Read' if log.status == 'Read' else 'Unread', # Logic updated
+                'mark': 'Read' if log.status == 'Read' else 'Unread', # Dynamic logic
                 'deliverability': log.deliverability,
                 'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
             } for log in logs_queryset[:20]]
