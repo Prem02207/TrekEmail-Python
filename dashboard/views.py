@@ -71,23 +71,35 @@ class FilteredLogsView(APIView):
         return Response({"logs": logs, "stats": stats})
 
 
-# --- 4. Tracking Pixel ---
+# --- 4. Tracking Pixel (Updated) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
+        # 1x1 transparent gif base64
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
+
+        # Bot detection logic
         user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
-        bot_keywords = ['googleimageproxy', 'bingpreview', 'cortex', 'proxy', 'scanner']
+        bot_keywords = ['googleimageproxy', 'bingpreview', 'cortex', 'proxy', 'scanner', 'bot', 'spider', 'crawler']
         is_bot = any(bot in user_agent for bot in bot_keywords)
 
+        # Tracking logic
         if not is_bot:
             try:
+                # Log ID se email record find karein
                 log = EmailLog.objects.get(id=log_id.replace('.png', ''))
+                # Sirf tabhi update karein agar status 'Unread' ho
                 if log.status == 'Unread':
                     log.status = 'Read'
                     log.save(update_fields=['status'])
-            except:
+            except EmailLog.DoesNotExist:
                 pass
-        return HttpResponse(gif_data, content_type="image/gif")
+
+        # Cache control headers add karein taaki browser baar-baar hit na kare
+        response = HttpResponse(gif_data, content_type="image/gif")
+        response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+        response['Pragma'] = 'no-cache'
+        response['Expires'] = '0'
+        return response
 
 
 # --- 5. Bulk Email Sending ---

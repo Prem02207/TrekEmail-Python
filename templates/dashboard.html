@@ -148,7 +148,6 @@
         }
 
         function updateUI(data) {
-            // Sahi data object access karein
             const stats = data.stats || data;
 
             if (stats) {
@@ -157,8 +156,6 @@
                 document.getElementById('spam').innerText = stats.spam_count || 0;
                 document.getElementById('read').innerText = stats.read_count || 0;
 
-                // Yahan 'unread' ko update karne ki logic
-                // Pehle check karein unread_count, agar nahi toh unread, agar woh bhi nahi toh 0
                 const unreadValue = stats.unread_count !== undefined ? stats.unread_count : (stats.unread || 0);
                 document.getElementById('unread').innerText = unreadValue;
             }
