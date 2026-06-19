@@ -55,6 +55,19 @@
             </div>
 
             <div class="space-y-6">
+                <div class="bg-blue-600 p-6 rounded-3xl text-white shadow-lg">
+                    <p class="text-blue-100 text-xs">Total Sent</p>
+                    <h2 class="text-4xl font-black" id="total">0</h2>
+                </div>
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="bg-white p-4 rounded-2xl border text-center"><p class="text-[9px] uppercase font-bold text-gray-400">Inbox</p><h2 class="text-lg font-black text-green-600" id="inbox">0</h2></div>
+                    <div class="bg-white p-4 rounded-2xl border text-center"><p class="text-[9px] uppercase font-bold text-gray-400">Spam</p><h2 class="text-lg font-black text-red-500" id="spam">0</h2></div>
+                </div>
+                <div class="bg-white p-5 rounded-3xl border text-center">
+                    <p class="text-gray-400 text-[9px] uppercase font-bold">Read / Unread</p>
+                    <h2 class="text-2xl font-black text-purple-600"><span id="read">0</span> / <span id="unread">0</span></h2>
+                </div>
+
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div class="bg-white p-5 rounded-3xl border">
                         <h3 class="font-bold text-gray-800 mb-2 text-xs uppercase">Filter by Date</h3>
@@ -68,19 +81,6 @@
                         <h3 class="font-bold text-gray-800 mb-2 text-xs uppercase">Emails by Date</h3>
                         <div id="date-stats-container" class="space-y-2 text-[11px]"></div>
                     </div>
-                </div>
-
-                <div class="bg-blue-600 p-6 rounded-3xl text-white shadow-lg">
-                    <p class="text-blue-100 text-xs">Total Sent</p>
-                    <h2 class="text-4xl font-black" id="total">0</h2>
-                </div>
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="bg-white p-4 rounded-2xl border text-center"><p class="text-[9px] uppercase font-bold text-gray-400">Inbox</p><h2 class="text-lg font-black text-green-600" id="inbox">0</h2></div>
-                    <div class="bg-white p-4 rounded-2xl border text-center"><p class="text-[9px] uppercase font-bold text-gray-400">Spam</p><h2 class="text-lg font-black text-red-500" id="spam">0</h2></div>
-                </div>
-                <div class="bg-white p-5 rounded-3xl border text-center">
-                    <p class="text-gray-400 text-[9px] uppercase font-bold">Read / Unread</p>
-                    <h2 class="text-2xl font-black text-purple-600"><span id="read">0</span> / <span id="unread">0</span></h2>
                 </div>
             </div>
         </div>
@@ -110,7 +110,6 @@
             `;
         }
 
-        // Updated function to handle "Go" button click
         function applyDateFilter() {
             const date = document.getElementById('dateFilter').value;
             if (date) {
