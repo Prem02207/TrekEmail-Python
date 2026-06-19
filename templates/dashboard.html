@@ -20,6 +20,10 @@
                             <input type="email" name="manual_email" placeholder="Recipient Email" class="border p-3 w-full rounded-xl text-sm">
                             <input type="file" name="csv_file" accept=".csv" class="border p-2.5 w-full rounded-xl bg-gray-50 text-xs">
                         </div>
+                        <div class="mt-2">
+                            <label class="text-xs text-gray-500 font-bold">Attachment (Optional):</label>
+                            <input type="file" name="attachment" class="border p-2 w-full rounded-xl bg-gray-50 text-xs">
+                        </div>
                         <button type="submit" id="sendBtn" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition">Send Email</button>
                     </form>
                 </div>
@@ -77,13 +81,11 @@
             btn.innerText = "Send Email";
         };
 
-        async function loadStats(forceRefresh = false) {
-            if (isFiltered && !forceRefresh) return;
-
+        async function loadStats(force = false) {
+            if (isFiltered && !force) return;
             try {
                 const res = await fetch('/api/stats/');
                 const data = await res.json();
-
                 document.getElementById('total').innerText = data.total_sent || 0;
                 document.getElementById('inbox').innerText = data.inbox_count || 0;
                 document.getElementById('spam').innerText = data.spam_count || 0;
@@ -94,28 +96,24 @@
                 if (data.logs) {
                     tableBody.innerHTML = data.logs.map(log => `
                         <tr>
-                            <td class="p-3 truncate max-w-[100px]">${log.email_address}</td>
-                            <td class="p-3 font-semibold text-blue-600">Sent</td>
-                            <td class="p-3"><span class="${log.mark === 'Read' ? 'text-green-600 font-bold' : 'text-gray-500'}">${log.mark}</span></td>
+                            <td class="p-3">${log.email_address}</td>
+                            <td class="p-3">${log.status}</td>
+                            <td class="p-3"><span class="px-2 py-1 rounded-full text-[9px] font-bold ${log.mark === 'Read' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">${log.mark}</span></td>
                             <td class="p-3">${log.deliverability}</td>
                             <td class="p-3 text-gray-400">${log.date_sent}</td>
                         </tr>
                     `).join('');
                 }
 
-                if (data.date_stats) {
-                    let html = `<div onclick="resetView()" class="cursor-pointer text-blue-600 font-bold border-b pb-1 mb-2 hover:underline">Show All</div>`;
-                    html += data.date_stats.map(ds => `
-                        <div class="flex justify-between border-b pb-1 hover:bg-gray-50 cursor-pointer" onclick="loadFilteredLogs('${ds.date}')">
-                            <span>${ds.date}</span><span class="font-bold">${ds.count}</span>
-                        </div>
-                    `).join('');
-                    document.getElementById('date-stats-container').innerHTML = html;
-                }
+                let html = `<div onclick="resetView()" class="text-blue-600 font-bold cursor-pointer hover:underline">Show All</div>`;
+                data.date_stats.forEach(ds => {
+                    html += `<div class="flex justify-between border-b py-1 cursor-pointer hover:bg-gray-100" onclick="loadFiltered('${ds.date}')"><span>${ds.date}</span><span class="font-bold">${ds.count}</span></div>`;
+                });
+                document.getElementById('date-stats-container').innerHTML = html;
             } catch (err) { console.error(err); }
         }
 
-        async function loadFilteredLogs(date) {
+        async function loadFiltered(date) {
             isFiltered = true;
             const res = await fetch(`/api/filtered-logs/?date=${date}`);
             const data = await res.json();
@@ -123,10 +121,10 @@
             tableBody.innerHTML = data.logs.map(log => `
                 <tr>
                     <td class="p-3">${log.email_address}</td>
-                    <td class="p-3">Sent</td>
-                    <td class="p-3">${log.mark}</td>
+                    <td class="p-3">${log.status}</td>
+                    <td class="p-3"><span class="px-2 py-1 rounded-full text-[9px] font-bold ${log.mark === 'Read' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">${log.mark}</span></td>
                     <td class="p-3">${log.deliverability}</td>
-                    <td class="p-3">${log.date_sent}</td>
+                    <td class="p-3 text-gray-400">${log.date_sent}</td>
                 </tr>
             `).join('');
         }
