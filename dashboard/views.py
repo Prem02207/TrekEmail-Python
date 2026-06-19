@@ -2,7 +2,6 @@ import pandas as pd
 import base64
 import requests
 import time
-import traceback
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -14,23 +13,12 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from .models import EmailLog
 
-
 # --- 1. Dashboard View ---
 def dashboard_view(request):
-    emails = EmailLog.objects.all().order_by('-created_at')
-    context = {
-        'recent_emails': emails,
-        'total_sent': emails.filter(status__in=['Sent', 'Read']).count(),
-        'inbox': emails.filter(deliverability='Inbox').count(),
-        'spam': emails.filter(deliverability='Spam').count(),
-        'read': emails.filter(status='Read').count(),
-        'unread': emails.filter(status='Sent').count(),
-    }
-    return render(request, 'dashboard.html', context)
-
+    return render(request, 'dashboard.html')
 
 # --- 2. Helper Function for Email Sending ---
-def send_emails_task(recipient_list, subject, body, attach_data, attach_name, attach_type):
+def send_emails_task(recipient_list, subject, body):
     close_old_connections()
     url = "https://api.brevo.com/v3/smtp/email"
     headers = {"api-key": settings.BREVO_API_KEY, "Content-Type": "application/json"}
@@ -39,8 +27,7 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
         try:
             log = EmailLog.objects.create(email_address=email, status='Sent', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
-
-            html_content = f"{body} <div style='position:absolute; opacity:0; height:0; width:0; overflow:hidden;'><img src='{pixel_url}' width='1' height='1' /></div>"
+            html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
 
             payload = {
                 "sender": {"email": "premdemo22@gmail.com", "name": "Prem Demo"},
@@ -49,19 +36,16 @@ def send_emails_task(recipient_list, subject, body, attach_data, attach_name, at
                 "htmlContent": html_content
             }
             requests.post(url, json=payload, headers=headers)
-            time.sleep(0.5)
+            time.sleep(0.2)
         except Exception as e:
-            print(f"Error sending email: {e}")
-
+            print(f"Error: {e}")
 
 # --- 3. Filtered Logs API ---
 class FilteredLogsView(APIView):
     def get(self, request):
-        close_old_connections()
         selected_date = request.query_params.get('date')
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
-
-        if selected_date and selected_date != 'all':
+        if selected_date:
             logs_queryset = logs_queryset.filter(created_at__date=selected_date)
 
         logs = [{
@@ -71,43 +55,19 @@ class FilteredLogsView(APIView):
             'deliverability': log.deliverability,
             'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
-
         return Response({"logs": logs})
 
-
-# --- 4. Tracking Pixel (FULLY UPDATED) ---
+# --- 4. Tracking Pixel ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
-        user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
-
-        # Sirf "googleimageproxy" ya "bing" jaise bade bots ko block karein
-        # "brevo" ko hata diya hai taaki tracking trigger ho sake
-        bot_keywords = ['googleimageproxy', 'bingpreview', 'proxy', 'redirection-images']
-
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
-        response = HttpResponse(gif_data, content_type="image/gif")
-
-        response['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
-        response['Pragma'] = 'no-cache'
-        response['Expires'] = '0'
-
-        is_bot = any(bot in user_agent for bot in bot_keywords)
-
-        if not is_bot:
-            clean_id = str(log_id).replace('.png', '').replace('/', '')
-            try:
-                log = EmailLog.objects.get(id=clean_id)
-                if log.status == 'Sent':
-                    log.status = 'Read'
-                    log.save(update_fields=['status'])
-                    print(f"SUCCESS: Log {clean_id} updated to Read.")
-            except Exception as e:
-                print(f"Tracking error: {e}")
-        else:
-            print(f"SKIPPED: Bot ignored: {user_agent}")
-
-        return response
-
+        try:
+            log = EmailLog.objects.get(id=log_id.replace('.png', ''))
+            if log.status == 'Sent':
+                log.status = 'Read'
+                log.save()
+        except: pass
+        return HttpResponse(gif_data, content_type="image/gif")
 
 # --- 5. Bulk Email Sending ---
 class SendBulkEmailView(APIView):
@@ -118,22 +78,28 @@ class SendBulkEmailView(APIView):
             subject = request.POST.get('subject')
             body = request.POST.get('body')
             recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
-            send_emails_task(recipients, subject, body, None, None, None)
-            return JsonResponse({"status": "Email processed!"})
+            send_emails_task(recipients, subject, body)
+            return JsonResponse({"status": "Success"})
         except Exception:
             return Response({"error": "Failed"}, status=500)
 
-
-# --- 6. Stats API ---
+# --- 6. Stats API (FIXED) ---
 class DashboardStatsView(APIView):
     def get(self, request):
-        logs = EmailLog.objects.all()
+        logs_queryset = EmailLog.objects.all().order_by('-created_at')
         return Response({
-            "total_sent": logs.count(),
-            "inbox_count": logs.filter(deliverability='Inbox').count(),
-            "spam_count": logs.filter(deliverability='Spam').count(),
-            "read_count": logs.filter(status='Read').count(),
-            "unread_count": logs.filter(status='Sent').count(),
+            "total_sent": logs_queryset.count(),
+            "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
+            "spam_count": logs_queryset.filter(deliverability='Spam').count(),
+            "read_count": logs_queryset.filter(status='Read').count(),
+            "unread_count": logs_queryset.filter(status='Sent').count(),
             "date_stats": list(EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
-                count=Count('id')).order_by('-date'))
+                count=Count('id')).order_by('-date')),
+            "logs": [{
+                'email_address': log.email_address,
+                'status': 'Sent',
+                'mark': log.status,
+                'deliverability': log.deliverability,
+                'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
+            } for log in logs_queryset[:20]]
         })
