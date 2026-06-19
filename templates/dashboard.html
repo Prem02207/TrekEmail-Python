@@ -61,6 +61,8 @@
     </div>
 
     <script>
+        let isFiltered = false;
+
         document.getElementById('emailForm').onsubmit = async (e) => {
             e.preventDefault();
             const btn = document.getElementById('sendBtn');
@@ -75,7 +77,9 @@
             btn.innerText = "Send Email";
         };
 
-        async function loadStats() {
+        async function loadStats(forceRefresh = false) {
+            if (isFiltered && !forceRefresh) return;
+
             try {
                 const res = await fetch('/api/stats/');
                 const data = await res.json();
@@ -87,53 +91,49 @@
                 document.getElementById('unread').innerText = data.unread_count || 0;
 
                 const tableBody = document.getElementById('log-table');
-                if (data.logs && data.logs.length > 0) {
+                if (data.logs) {
                     tableBody.innerHTML = data.logs.map(log => `
                         <tr>
                             <td class="p-3 truncate max-w-[100px]">${log.email_address}</td>
                             <td class="p-3 font-semibold text-blue-600">Sent</td>
-                            <td class="p-3">
-                                <span class="px-2 py-0.5 rounded-full text-[10px] font-bold ${log.mark === 'Read' ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}">
-                                    ${log.mark === 'Read' ? 'Read' : 'Unread'}
-                                </span>
-                            </td>
-                            <td class="p-3">${log.deliverability || 'Inbox'}</td>
+                            <td class="p-3"><span class="${log.mark === 'Read' ? 'text-green-600 font-bold' : 'text-gray-500'}">${log.mark}</span></td>
+                            <td class="p-3">${log.deliverability}</td>
                             <td class="p-3 text-gray-400">${log.date_sent}</td>
                         </tr>
                     `).join('');
-                } else {
-                    tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No recent activity</td></tr>`;
                 }
 
-                const dateContainer = document.getElementById('date-stats-container');
                 if (data.date_stats) {
-                    let html = `<div onclick="window.location.reload()" class="cursor-pointer text-blue-600 font-bold border-b pb-1 mb-2 hover:underline">Show All</div>`;
+                    let html = `<div onclick="resetView()" class="cursor-pointer text-blue-600 font-bold border-b pb-1 mb-2 hover:underline">Show All</div>`;
                     html += data.date_stats.map(ds => `
                         <div class="flex justify-between border-b pb-1 hover:bg-gray-50 cursor-pointer" onclick="loadFilteredLogs('${ds.date}')">
-                            <span>${ds.date}</span>
-                            <span class="font-bold">${ds.count}</span>
+                            <span>${ds.date}</span><span class="font-bold">${ds.count}</span>
                         </div>
                     `).join('');
-                    dateContainer.innerHTML = html;
+                    document.getElementById('date-stats-container').innerHTML = html;
                 }
-            } catch (err) { console.error("Fetch Error:", err); }
+            } catch (err) { console.error(err); }
         }
 
         async function loadFilteredLogs(date) {
+            isFiltered = true;
             const res = await fetch(`/api/filtered-logs/?date=${date}`);
             const data = await res.json();
             const tableBody = document.getElementById('log-table');
-            if (data.logs) {
-                tableBody.innerHTML = data.logs.map(log => `
-                    <tr>
-                        <td class="p-3">${log.email_address}</td>
-                        <td class="p-3 text-blue-600">Sent</td>
-                        <td class="p-3"><span class="${log.mark === 'Read' ? 'text-green-700' : 'text-gray-600'}">${log.mark}</span></td>
-                        <td class="p-3">${log.deliverability}</td>
-                        <td class="p-3 text-gray-400">${log.date_sent}</td>
-                    </tr>
-                `).join('');
-            }
+            tableBody.innerHTML = data.logs.map(log => `
+                <tr>
+                    <td class="p-3">${log.email_address}</td>
+                    <td class="p-3">Sent</td>
+                    <td class="p-3">${log.mark}</td>
+                    <td class="p-3">${log.deliverability}</td>
+                    <td class="p-3">${log.date_sent}</td>
+                </tr>
+            `).join('');
+        }
+
+        function resetView() {
+            isFiltered = false;
+            loadStats(true);
         }
 
         setInterval(loadStats, 5000);
