@@ -13,9 +13,11 @@ from django.db.models import Count
 from django.db.models.functions import TruncDate
 from .models import EmailLog
 
+
 # --- 1. Dashboard View ---
 def dashboard_view(request):
     return render(request, 'dashboard.html')
+
 
 # --- 2. Helper Function for Email Sending ---
 def send_emails_task(recipient_list, subject, body):
@@ -25,7 +27,7 @@ def send_emails_task(recipient_list, subject, body):
 
     for email in recipient_list:
         try:
-            # Default status 'Unread' rakha hai, 'Sent' nahi
+            # Default status 'Unread' set kiya gaya hai
             log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
@@ -41,22 +43,35 @@ def send_emails_task(recipient_list, subject, body):
         except Exception as e:
             print(f"Error: {e}")
 
-# --- 3. Filtered Logs API ---
+
+# --- 3. Filtered Logs API (FINAL VERSION) ---
 class FilteredLogsView(APIView):
     def get(self, request):
         selected_date = request.query_params.get('date')
-        logs_queryset = EmailLog.objects.all().order_by('-created_at')
-        if selected_date:
-            logs_queryset = logs_queryset.filter(created_at__date=selected_date)
+        if not selected_date:
+            return Response({"error": "Date required"}, status=400)
+
+        logs_queryset = EmailLog.objects.filter(created_at__date=selected_date).order_by('-created_at')
+
+        # Date-specific stats calculate karein
+        stats = {
+            "total_sent": logs_queryset.count(),
+            "read_count": logs_queryset.filter(status='Read').count(),
+            "unread_count": logs_queryset.filter(status='Unread').count(),
+            "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
+            "spam_count": logs_queryset.filter(deliverability='Spam').count(),
+        }
 
         logs = [{
             'email_address': log.email_address,
             'status': log.deliverability,
-            'mark': 'Read' if log.status == 'Read' else 'Unread', # Dynamic logic
+            'mark': log.status,  # Ab 'Read' ya 'Unread' directly pass ho raha hai
             'deliverability': log.deliverability,
             'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
-        return Response({"logs": logs})
+
+        return Response({"logs": logs, "stats": stats})
+
 
 # --- 4. Tracking Pixel (With Bot Filter) ---
 class TrackEmailView(APIView):
@@ -69,11 +84,13 @@ class TrackEmailView(APIView):
         if not is_bot:
             try:
                 log = EmailLog.objects.get(id=log_id.replace('.png', ''))
-                if log.status == 'Unread': # Sirf tab update karein agar 'Unread' hai
+                if log.status == 'Unread':
                     log.status = 'Read'
                     log.save(update_fields=['status'])
-            except: pass
+            except:
+                pass
         return HttpResponse(gif_data, content_type="image/gif")
+
 
 # --- 5. Bulk Email Sending ---
 class SendBulkEmailView(APIView):
@@ -88,6 +105,7 @@ class SendBulkEmailView(APIView):
             return JsonResponse({"status": "Success"})
         except Exception:
             return Response({"error": "Failed"}, status=500)
+
 
 # --- 6. Stats API ---
 class DashboardStatsView(APIView):
@@ -104,7 +122,7 @@ class DashboardStatsView(APIView):
             "logs": [{
                 'email_address': log.email_address,
                 'status': log.deliverability,
-                'mark': 'Read' if log.status == 'Read' else 'Unread', # Dynamic logic
+                'mark': log.status,
                 'deliverability': log.deliverability,
                 'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
             } for log in logs_queryset[:20]]

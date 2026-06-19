@@ -55,6 +55,12 @@
             </div>
 
             <div class="space-y-6">
+                <div class="bg-white p-5 rounded-3xl border">
+                    <h3 class="font-bold text-gray-800 mb-2 text-xs uppercase">Filter by Date</h3>
+                    <input type="date" id="dateFilter" class="w-full p-2 border rounded-xl text-sm"
+                           onchange="loadFiltered(this.value)">
+                </div>
+
                 <div class="bg-blue-600 p-6 rounded-3xl text-white shadow-lg">
                     <p class="text-blue-100 text-xs">Total Sent</p>
                     <h2 class="text-4xl font-black" id="total">0</h2>
@@ -82,7 +88,6 @@
             loadStats(true);
         });
 
-        // Reusable table row generator
         function generateTableRow(log) {
             const isRead = log.mark === 'Read';
             return `
@@ -106,19 +111,7 @@
                 const res = await fetch('/api/stats/');
                 if (!res.ok) throw new Error('Network error');
                 const data = await res.json();
-
-                document.getElementById('total').innerText = data.total_sent || 0;
-                document.getElementById('inbox').innerText = data.inbox_count || 0;
-                document.getElementById('spam').innerText = data.spam_count || 0;
-                document.getElementById('read').innerText = data.read_count || 0;
-                document.getElementById('unread').innerText = data.unread_count || 0;
-
-                const tableBody = document.getElementById('log-table');
-                if (data.logs && data.logs.length > 0) {
-                    tableBody.innerHTML = data.logs.map(log => generateTableRow(log)).join('');
-                } else {
-                    tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No activity found.</td></tr>`;
-                }
+                updateUI(data);
 
                 if (data.date_stats) {
                     let html = `<div onclick="resetView()" class="text-blue-600 font-bold cursor-pointer hover:underline mb-2">Show All</div>`;
@@ -131,21 +124,41 @@
         }
 
         async function loadFiltered(date) {
+            if (!date) return;
             isFiltered = true;
             try {
                 const res = await fetch(`/api/filtered-logs/?date=${date}`);
                 const data = await res.json();
-                const tableBody = document.getElementById('log-table');
-                if (data.logs && data.logs.length > 0) {
-                    tableBody.innerHTML = data.logs.map(log => generateTableRow(log)).join('');
-                } else {
-                    tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No activity for this date.</td></tr>`;
-                }
+                updateUI(data);
             } catch (err) { console.error(err); }
+        }
+
+        function updateUI(data) {
+            if (data.stats) {
+                document.getElementById('total').innerText = data.stats.total_sent || 0;
+                document.getElementById('inbox').innerText = data.stats.inbox_count || 0;
+                document.getElementById('spam').innerText = data.stats.spam_count || 0;
+                document.getElementById('read').innerText = data.stats.read_count || 0;
+                document.getElementById('unread').innerText = data.stats.unread_count || 0;
+            } else {
+                document.getElementById('total').innerText = data.total_sent || 0;
+                document.getElementById('inbox').innerText = data.inbox_count || 0;
+                document.getElementById('spam').innerText = data.spam_count || 0;
+                document.getElementById('read').innerText = data.read_count || 0;
+                document.getElementById('unread').innerText = data.unread_count || 0;
+            }
+
+            const tableBody = document.getElementById('log-table');
+            if (data.logs && data.logs.length > 0) {
+                tableBody.innerHTML = data.logs.map(log => generateTableRow(log)).join('');
+            } else {
+                tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No activity found.</td></tr>`;
+            }
         }
 
         function resetView() {
             isFiltered = false;
+            document.getElementById('dateFilter').value = ''; // Reset date picker
             loadStats(true);
         }
 
