@@ -148,18 +148,17 @@
         }
 
         function updateUI(data) {
-            if (data.stats) {
-                document.getElementById('total').innerText = data.stats.total_sent || 0;
-                document.getElementById('inbox').innerText = data.stats.inbox_count || 0;
-                document.getElementById('spam').innerText = data.stats.spam_count || 0;
-                document.getElementById('read').innerText = data.stats.read_count || 0;
-                document.getElementById('unread').innerText = data.stats.unread_count || 0;
-            } else {
-                document.getElementById('total').innerText = data.total_sent || 0;
-                document.getElementById('inbox').innerText = data.inbox_count || 0;
-                document.getElementById('spam').innerText = data.spam_count || 0;
-                document.getElementById('read').innerText = data.read_count || 0;
-                document.getElementById('unread').innerText = data.unread_count || 0;
+            // Sahi data object access karein
+            const stats = data.stats || data;
+
+            if (stats) {
+                document.getElementById('total').innerText = stats.total_sent || 0;
+                document.getElementById('inbox').innerText = stats.inbox_count || 0;
+                document.getElementById('spam').innerText = stats.spam_count || 0;
+                document.getElementById('read').innerText = stats.read_count || 0;
+
+                // Yahan 'unread' field ko update karein
+                document.getElementById('unread').innerText = stats.unread_count || 0;
             }
 
             const tableBody = document.getElementById('log-table');
