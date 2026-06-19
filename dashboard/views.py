@@ -40,7 +40,7 @@ def send_emails_task(recipient_list, subject, body):
         except Exception as e:
             print(f"Error: {e}")
 
-# --- 3. Filtered Logs API ---
+# --- 3. Filtered Logs API (UPDATED) ---
 class FilteredLogsView(APIView):
     def get(self, request):
         selected_date = request.query_params.get('date')
@@ -50,8 +50,8 @@ class FilteredLogsView(APIView):
 
         logs = [{
             'email_address': log.email_address,
-            'status': 'Sent',
-            'mark': log.status,
+            'status': log.deliverability,
+            'mark': 'Read' if log.status == 'Read' else 'Unread', # Logic updated
             'deliverability': log.deliverability,
             'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
@@ -83,7 +83,7 @@ class SendBulkEmailView(APIView):
         except Exception:
             return Response({"error": "Failed"}, status=500)
 
-# --- 6. Stats API (FIXED) ---
+# --- 6. Stats API (UPDATED) ---
 class DashboardStatsView(APIView):
     def get(self, request):
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
@@ -97,8 +97,8 @@ class DashboardStatsView(APIView):
                 count=Count('id')).order_by('-date')),
             "logs": [{
                 'email_address': log.email_address,
-                'status': 'Sent',
-                'mark': log.status,
+                'status': log.deliverability,
+                'mark': 'Read' if log.status == 'Read' else 'Unread', # Logic updated
                 'deliverability': log.deliverability,
                 'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
             } for log in logs_queryset[:20]]
