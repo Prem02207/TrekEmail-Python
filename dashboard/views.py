@@ -43,7 +43,7 @@ def send_emails_task(recipient_list, subject, body):
             print(f"Error: {e}")
 
 
-# --- 3. Filtered Logs API (Updated) ---
+# --- 3. Filtered Logs API ---
 class FilteredLogsView(APIView):
     def get(self, request):
         selected_date = request.query_params.get('date')
@@ -105,22 +105,18 @@ class SendBulkEmailView(APIView):
             return Response({"error": "Failed"}, status=500)
 
 
-# --- 6. Stats API (Updated to ensure clean stats dictionary) ---
+# --- 6. Stats API ---
 class DashboardStatsView(APIView):
     def get(self, request):
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
-
-        # Stats dictionary define ki
-        stats = {
-            'total_sent': logs_queryset.count(),
-            'inbox_count': logs_queryset.filter(deliverability='Inbox').count(),
-            'spam_count': logs_queryset.filter(deliverability='Spam').count(),
-            'read_count': logs_queryset.filter(status='Read').count(),
-            'unread_count': logs_queryset.filter(status='Unread').count(),
-        }
-
         return Response({
-            "stats": stats,  # Stats ko ek wrapper mein bheja
+            "stats": {
+                "total_sent": logs_queryset.count(),
+                "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
+                "spam_count": logs_queryset.filter(deliverability='Spam').count(),
+                "read_count": logs_queryset.filter(status='Read').count(),
+                "unread_count": logs_queryset.filter(status='Unread').count(),
+            },
             "date_stats": list(EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
                 count=Count('id')).order_by('-date')),
             "logs": [{
