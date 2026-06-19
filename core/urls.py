@@ -18,6 +18,6 @@ urlpatterns = [
     # 4. Bulk Email API
     path('send-bulk-email/', SendBulkEmailView.as_view(), name='send-bulk-email'),
 
-    # 5. Tracking (Updated with .png extension)
-    path('track/<str:log_id>.png', TrackEmailView.as_view(), name='track-email'),
+    # 5. Tracking
+    path('track/<str:log_id>/', TrackEmailView.as_view(), name='track-email'),
 ]
