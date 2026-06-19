@@ -27,7 +27,6 @@ def send_emails_task(recipient_list, subject, body):
 
     for email in recipient_list:
         try:
-            # Default status 'Unread' set kiya gaya hai
             log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
             html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
@@ -44,7 +43,7 @@ def send_emails_task(recipient_list, subject, body):
             print(f"Error: {e}")
 
 
-# --- 3. Filtered Logs API (FINAL VERSION) ---
+# --- 3. Filtered Logs API (Updated) ---
 class FilteredLogsView(APIView):
     def get(self, request):
         selected_date = request.query_params.get('date')
@@ -53,7 +52,6 @@ class FilteredLogsView(APIView):
 
         logs_queryset = EmailLog.objects.filter(created_at__date=selected_date).order_by('-created_at')
 
-        # Date-specific stats calculate karein
         stats = {
             "total_sent": logs_queryset.count(),
             "read_count": logs_queryset.filter(status='Read').count(),
@@ -65,7 +63,7 @@ class FilteredLogsView(APIView):
         logs = [{
             'email_address': log.email_address,
             'status': log.deliverability,
-            'mark': log.status,  # Ab 'Read' ya 'Unread' directly pass ho raha hai
+            'mark': log.status,
             'deliverability': log.deliverability,
             'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
@@ -73,7 +71,7 @@ class FilteredLogsView(APIView):
         return Response({"logs": logs, "stats": stats})
 
 
-# --- 4. Tracking Pixel (With Bot Filter) ---
+# --- 4. Tracking Pixel ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
@@ -107,16 +105,22 @@ class SendBulkEmailView(APIView):
             return Response({"error": "Failed"}, status=500)
 
 
-# --- 6. Stats API ---
+# --- 6. Stats API (Updated to ensure clean stats dictionary) ---
 class DashboardStatsView(APIView):
     def get(self, request):
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
+
+        # Stats dictionary define ki
+        stats = {
+            'total_sent': logs_queryset.count(),
+            'inbox_count': logs_queryset.filter(deliverability='Inbox').count(),
+            'spam_count': logs_queryset.filter(deliverability='Spam').count(),
+            'read_count': logs_queryset.filter(status='Read').count(),
+            'unread_count': logs_queryset.filter(status='Unread').count(),
+        }
+
         return Response({
-            "total_sent": logs_queryset.count(),
-            "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
-            "spam_count": logs_queryset.filter(deliverability='Spam').count(),
-            "read_count": logs_queryset.filter(status='Read').count(),
-            "unread_count": logs_queryset.filter(status='Unread').count(),
+            "stats": stats,  # Stats ko ek wrapper mein bheja
             "date_stats": list(EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
                 count=Count('id')).order_by('-date')),
             "logs": [{
