@@ -16,14 +16,23 @@
                         {% csrf_token %}
                         <input type="text" name="subject" placeholder="Subject Line" class="w-full p-3 border rounded-xl text-sm" required>
                         <textarea name="body" placeholder="Write your email content here..." class="w-full p-3 border rounded-xl h-32 text-sm"></textarea>
+
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <input type="email" name="manual_email" placeholder="Recipient Email" class="border p-3 w-full rounded-xl text-sm">
-                            <input type="file" name="csv_file" accept=".csv" class="border p-2.5 w-full rounded-xl bg-gray-50 text-xs">
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Single Recipient</label>
+                                <input type="email" name="manual_email" placeholder="Email Address" class="border p-3 w-full rounded-xl text-sm">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-gray-500 uppercase">Bulk CSV (Header must be 'email')</label>
+                                <input type="file" name="csv_file" accept=".csv" class="border p-2 w-full rounded-xl bg-gray-50 text-xs">
+                            </div>
                         </div>
-                        <div class="mt-2">
-                            <label class="text-xs text-gray-500 font-bold">Attachment (Optional):</label>
+
+                        <div>
+                            <label class="text-[10px] font-bold text-gray-500 uppercase">Attachment (Optional)</label>
                             <input type="file" name="attachment" class="border p-2 w-full rounded-xl bg-gray-50 text-xs">
                         </div>
+
                         <button type="submit" id="sendBtn" class="w-full bg-blue-600 text-white font-bold py-3 rounded-xl hover:bg-blue-700 transition">Send Email</button>
                     </form>
                 </div>
@@ -33,11 +42,13 @@
                     <div class="overflow-y-auto max-h-64 border rounded-2xl">
                         <table class="w-full text-left text-xs">
                             <thead class="bg-gray-50 sticky top-0">
-                                <tr class="text-gray-400 uppercase">
+                                <tr class="text-gray-400 uppercase text-[10px]">
                                     <th class="p-3">Email</th><th class="p-3">Status</th><th class="p-3">Mark</th><th class="p-3">Delivery</th><th class="p-3">Date</th>
                                 </tr>
                             </thead>
-                            <tbody id="log-table" class="text-gray-600 divide-y"></tbody>
+                            <tbody id="log-table" class="text-gray-600 divide-y">
+                                <tr><td colspan="5" class="p-4 text-center">Loading activity...</td></tr>
+                            </tbody>
                         </table>
                     </div>
                 </div>
@@ -67,25 +78,12 @@
     <script>
         let isFiltered = false;
 
-        document.getElementById('emailForm').onsubmit = async (e) => {
-            e.preventDefault();
-            const btn = document.getElementById('sendBtn');
-            btn.innerText = "Sending...";
-            const formData = new FormData(e.target);
-            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-            try {
-                await fetch('/send-bulk-email/', { method: 'POST', body: formData, headers: {'X-CSRFToken': csrftoken} });
-                alert("Campaign started successfully!");
-                e.target.reset();
-            } catch (err) { console.error(err); alert("Error sending email"); }
-            btn.innerText = "Send Email";
-        };
-
         async function loadStats(force = false) {
             if (isFiltered && !force) return;
             try {
                 const res = await fetch('/api/stats/');
                 const data = await res.json();
+
                 document.getElementById('total').innerText = data.total_sent || 0;
                 document.getElementById('inbox').innerText = data.inbox_count || 0;
                 document.getElementById('spam').innerText = data.spam_count || 0;
@@ -93,10 +91,10 @@
                 document.getElementById('unread').innerText = data.unread_count || 0;
 
                 const tableBody = document.getElementById('log-table');
-                if (data.logs) {
+                if (data.logs && data.logs.length > 0) {
                     tableBody.innerHTML = data.logs.map(log => `
                         <tr>
-                            <td class="p-3">${log.email_address}</td>
+                            <td class="p-3 truncate max-w-[120px]">${log.email_address}</td>
                             <td class="p-3">${log.status}</td>
                             <td class="p-3"><span class="px-2 py-1 rounded-full text-[9px] font-bold ${log.mark === 'Read' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">${log.mark}</span></td>
                             <td class="p-3">${log.deliverability}</td>
@@ -105,9 +103,9 @@
                     `).join('');
                 }
 
-                let html = `<div onclick="resetView()" class="text-blue-600 font-bold cursor-pointer hover:underline">Show All</div>`;
+                let html = `<div onclick="resetView()" class="text-blue-600 font-bold cursor-pointer hover:underline mb-2">Show All</div>`;
                 data.date_stats.forEach(ds => {
-                    html += `<div class="flex justify-between border-b py-1 cursor-pointer hover:bg-gray-100" onclick="loadFiltered('${ds.date}')"><span>${ds.date}</span><span class="font-bold">${ds.count}</span></div>`;
+                    html += `<div class="flex justify-between border-b py-1 cursor-pointer hover:bg-gray-50" onclick="loadFiltered('${ds.date}')"><span>${ds.date}</span><span class="font-bold">${ds.count}</span></div>`;
                 });
                 document.getElementById('date-stats-container').innerHTML = html;
             } catch (err) { console.error(err); }
@@ -117,12 +115,11 @@
             isFiltered = true;
             const res = await fetch(`/api/filtered-logs/?date=${date}`);
             const data = await res.json();
-            const tableBody = document.getElementById('log-table');
-            tableBody.innerHTML = data.logs.map(log => `
+            document.getElementById('log-table').innerHTML = data.logs.map(log => `
                 <tr>
                     <td class="p-3">${log.email_address}</td>
                     <td class="p-3">${log.status}</td>
-                    <td class="p-3"><span class="px-2 py-1 rounded-full text-[9px] font-bold ${log.mark === 'Read' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}">${log.mark}</span></td>
+                    <td class="p-3">${log.mark}</td>
                     <td class="p-3">${log.deliverability}</td>
                     <td class="p-3 text-gray-400">${log.date_sent}</td>
                 </tr>
@@ -133,6 +130,21 @@
             isFiltered = false;
             loadStats(true);
         }
+
+        document.getElementById('emailForm').onsubmit = async (e) => {
+            e.preventDefault();
+            const btn = document.getElementById('sendBtn');
+            btn.innerText = "Sending...";
+            const formData = new FormData(e.target);
+            const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+            try {
+                await fetch('/send-bulk-email/', { method: 'POST', body: formData, headers: {'X-CSRFToken': csrftoken} });
+                alert("Campaign started!");
+                e.target.reset();
+                loadStats(true); // Update table after sending
+            } catch (err) { alert("Error"); }
+            btn.innerText = "Send Email";
+        };
 
         setInterval(loadStats, 5000);
         loadStats();
