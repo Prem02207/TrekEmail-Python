@@ -101,33 +101,43 @@
 
         document.addEventListener('DOMContentLoaded', () => { loadStats(true); });
 
-        // Submit Logic
         document.getElementById('emailForm').onsubmit = async (e) => {
             e.preventDefault();
-
-            // Editor content sync
             var format = document.getElementById('format-select').value;
             document.getElementById('hidden-body').value = (format === 'html') ? quill.root.innerHTML : quill.getText();
-
             const btn = document.getElementById('sendBtn');
             btn.innerText = "Sending...";
             const formData = new FormData(e.target);
             const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
-
             try {
                 await fetch('/send-bulk-email/', { method: 'POST', body: formData, headers: {'X-CSRFToken': csrftoken} });
                 alert("Campaign started!");
-                quill.setContents([{ insert: '\n' }]); // Clear editor
+                quill.setContents([{ insert: '\n' }]);
                 e.target.reset();
                 loadStats(true);
             } catch (err) { alert("Error sending email"); }
             btn.innerText = "Send Email";
         };
 
-        // UI Helpers
         function generateTableRow(log) {
             const isRead = log.mark === 'Read';
-            return `<tr class="border-b"><td class="p-3 truncate max-w-[120px]">${log.email_address}</td><td class="p-3">${log.status}</td><td class="p-3"><span class="px-2 py-1 rounded-full text-[9px] font-bold ${isRead ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">${log.mark}</span></td><td class="p-3">${log.deliverability}</td><td class="p-3 text-gray-400">${log.date_sent}</td></tr>`;
+            const isUnread = log.mark === 'Unread';
+
+            return `
+                <tr class="border-b">
+                    <td class="p-3 truncate max-w-[120px]">${log.email_address}</td>
+                    <td class="p-3">Inbox</td>
+                    <td class="p-3">
+                        <span class="px-2 py-1 rounded-full text-[9px] font-bold
+                            ${isRead ? 'bg-green-100 text-green-700' :
+                              isUnread ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-700'}">
+                            ${log.mark}
+                        </span>
+                    </td>
+                    <td class="p-3">Inbox</td>
+                    <td class="p-3 text-gray-400">${log.date_sent}</td>
+                </tr>
+            `;
         }
 
         async function loadStats(force = false) {
