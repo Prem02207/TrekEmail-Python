@@ -2,6 +2,7 @@ import pandas as pd
 import base64
 import requests
 import time
+from datetime import timedelta  # Yahan import add kiya gaya hai
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
@@ -19,7 +20,7 @@ def dashboard_view(request):
     return render(request, 'dashboard.html')
 
 
-# --- 2. Helper Function for Email Sending (Updated with Personalization) ---
+# --- 2. Helper Function for Email Sending ---
 def send_emails_task(recipient_data, subject, body, is_html=True):
     close_old_connections()
     url = "https://api.brevo.com/v3/smtp/email"
@@ -28,10 +29,9 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
     for data in recipient_data:
         try:
             email = data.get('email')
-            # Personalization logic: {{tag}} ko CSV data se replace karna
             personalized_body = body
             for key, value in data.items():
-                if key != 'email':  # email ko chhod kar baaki columns replace karein
+                if key != 'email':
                     personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
 
             log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Inbox')
@@ -44,7 +44,6 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
                 "subject": subject,
             }
 
-            # HTML ya Text ke hisaab se payload set karna
             if is_html:
                 payload["htmlContent"] = content
             else:
@@ -108,7 +107,7 @@ class TrackEmailView(APIView):
         return response
 
 
-# --- 5. Bulk Email Sending (Updated with CSV-to-Dict) ---
+# --- 5. Bulk Email Sending ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -132,10 +131,12 @@ class SendBulkEmailView(APIView):
             return Response({"error": str(e)}, status=500)
 
 
-# --- 6. Stats API ---
+# --- 6. Stats API (Updated to Last 7 Days) ---
 class DashboardStatsView(APIView):
     def get(self, request):
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
+        seven_days_ago = timezone.now() - timedelta(days=7)
+
         return Response({
             "stats": {
                 "total_sent": logs_queryset.count(),
@@ -144,8 +145,9 @@ class DashboardStatsView(APIView):
                 "read_count": logs_queryset.filter(status='Read').count(),
                 "unread_count": logs_queryset.filter(status='Unread').count(),
             },
-            "date_stats": list(EmailLog.objects.annotate(date=TruncDate('created_at')).values('date').annotate(
-                count=Count('id')).order_by('-date')),
+            "date_stats": list(EmailLog.objects.filter(created_at__gte=seven_days_ago)
+                               .annotate(date=TruncDate('created_at'))
+                               .values('date').annotate(count=Count('id')).order_by('-date')),
             "logs": [{
                 'email_address': log.email_address,
                 'status': log.deliverability,
