@@ -19,27 +19,37 @@ def dashboard_view(request):
     return render(request, 'dashboard.html')
 
 
-# --- 2. Helper Function for Email Sending ---
-def send_emails_task(recipient_list, subject, body):
+# --- 2. Helper Function for Email Sending (Updated with Personalization) ---
+def send_emails_task(recipient_data, subject, body, is_html=True):
     close_old_connections()
     url = "https://api.brevo.com/v3/smtp/email"
-
-    # Yahan 'settings.BREVO_API_KEY' aapke Render environment variables se aayega
     headers = {"api-key": settings.BREVO_API_KEY, "Content-Type": "application/json"}
 
-    for email in recipient_list:
+    for data in recipient_data:
         try:
+            email = data.get('email')
+            # Personalization logic: {{tag}} ko CSV data se replace karna
+            personalized_body = body
+            for key, value in data.items():
+                if key != 'email':  # email ko chhod kar baaki columns replace karein
+                    personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
+
             log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Inbox')
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
-            html_content = f"{body} <img src='{pixel_url}' width='1' height='1' />"
+            content = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
 
             payload = {
-                # Yahan sender email update kar diya gaya hai
-                "sender": {"email": "info@scriza.in", "name": "Scriza Team"},
+                "sender": {"email": "premdemo22@gmail.com", "name": "Prem Yadav"},
                 "to": [{"email": email}],
                 "subject": subject,
-                "htmlContent": html_content
             }
+
+            # HTML ya Text ke hisaab se payload set karna
+            if is_html:
+                payload["htmlContent"] = content
+            else:
+                payload["textContent"] = content
+
             requests.post(url, json=payload, headers=headers)
             time.sleep(0.2)
         except Exception as e:
@@ -98,7 +108,7 @@ class TrackEmailView(APIView):
         return response
 
 
-# --- 5. Bulk Email Sending ---
+# --- 5. Bulk Email Sending (Updated with CSV-to-Dict) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -106,11 +116,20 @@ class SendBulkEmailView(APIView):
             manual_email = request.POST.get('manual_email')
             subject = request.POST.get('subject')
             body = request.POST.get('body')
-            recipients = pd.read_csv(csv_file).iloc[:, 0].dropna().tolist() if csv_file else [manual_email]
-            send_emails_task(recipients, subject, body)
+            content_format = request.POST.get('format', 'html')
+
+            if csv_file:
+                df = pd.read_csv(csv_file)
+                if 'email' not in df.columns:
+                    return Response({"error": "CSV must have 'email' column"}, status=400)
+                recipients = df.to_dict('records')
+            else:
+                recipients = [{'email': manual_email}]
+
+            send_emails_task(recipients, subject, body, is_html=(content_format == 'html'))
             return JsonResponse({"status": "Success"})
-        except Exception:
-            return Response({"error": "Failed"}, status=500)
+        except Exception as e:
+            return Response({"error": str(e)}, status=500)
 
 
 # --- 6. Stats API ---

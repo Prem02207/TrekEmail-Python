@@ -2,6 +2,7 @@
 <html lang="en">
 <head>
     <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdn.quilljs.com/1.3.6/quill.snow.css" rel="stylesheet">
     <title>Email Automation Pro</title>
 </head>
 <body class="bg-gray-50 min-h-screen p-4 md:p-8">
@@ -15,7 +16,20 @@
                     <form id="emailForm" method="POST" enctype="multipart/form-data" class="space-y-3">
                         {% csrf_token %}
                         <input type="text" name="subject" placeholder="Subject Line" class="w-full p-3 border rounded-xl text-sm" required>
-                        <textarea name="body" placeholder="Write your email content here..." class="w-full p-3 border rounded-xl h-32 text-sm"></textarea>
+
+                        <div class="mb-4">
+                            <label class="text-[10px] font-bold text-gray-500 uppercase">Email Content</label>
+                            <div id="editor-container" class="border rounded-xl h-48 bg-white mt-1"></div>
+                            <input type="hidden" name="body" id="hidden-body">
+                        </div>
+
+                        <div class="mb-4">
+                            <label class="font-bold text-xs">Content Format: </label>
+                            <select id="format-select" name="format" class="border p-2 rounded-lg text-sm">
+                                <option value="html">HTML</option>
+                                <option value="text">Plain Text</option>
+                            </select>
+                        </div>
 
                         <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div>
@@ -69,126 +83,80 @@
                 </div>
 
                 <div class="bg-white p-5 rounded-3xl border">
-                    <div class="flex justify-between items-center mb-4">
-                        <h3 class="font-bold text-gray-800 text-xs uppercase">Filter by Date</h3>
-                    </div>
+                    <h3 class="font-bold text-gray-800 text-xs uppercase mb-4">Filter by Date</h3>
                     <div class="flex gap-2 mb-4">
                         <input type="date" id="dateFilter" class="w-full p-2 border rounded-xl text-sm">
-                        <button onclick="applyDateFilter()" class="bg-gray-800 text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-black transition">
-                            Go
-                        </button>
+                        <button onclick="applyDateFilter()" class="bg-gray-800 text-white font-bold px-4 py-2 rounded-xl text-sm hover:bg-black transition">Go</button>
                     </div>
-
-                    <h3 class="font-bold text-gray-800 mb-2 text-xs uppercase">Emails by Date</h3>
                     <div id="date-stats-container" class="space-y-2 text-[11px]"></div>
                 </div>
             </div>
         </div>
     </div>
 
+    <script src="https://cdn.quilljs.com/1.3.6/quill.js"></script>
     <script>
+        var quill = new Quill('#editor-container', { theme: 'snow' });
         let isFiltered = false;
 
-        document.addEventListener('DOMContentLoaded', () => {
-            loadStats(true);
-        });
+        document.addEventListener('DOMContentLoaded', () => { loadStats(true); });
 
-        function generateTableRow(log) {
-            const isRead = log.mark === 'Read';
-            return `
-                <tr class="border-b">
-                    <td class="p-3 truncate max-w-[120px]">${log.email_address}</td>
-                    <td class="p-3">${log.status}</td>
-                    <td class="p-3">
-                        <span class="px-2 py-1 rounded-full text-[9px] font-bold ${isRead ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">
-                            ${log.mark}
-                        </span>
-                    </td>
-                    <td class="p-3">${log.deliverability}</td>
-                    <td class="p-3 text-gray-400">${log.date_sent}</td>
-                </tr>
-            `;
-        }
-
-        function applyDateFilter() {
-            const date = document.getElementById('dateFilter').value;
-            if (date) {
-                loadFiltered(date);
-            } else {
-                alert("Please select a date first!");
-            }
-        }
-
-        async function loadStats(force = false) {
-            if (isFiltered && !force) return;
-            try {
-                const res = await fetch('/api/stats/');
-                if (!res.ok) throw new Error('Network error');
-                const data = await res.json();
-                updateUI(data);
-
-                if (data.date_stats) {
-                    let html = `<div onclick="resetView()" class="text-blue-600 font-bold cursor-pointer hover:underline mb-2">Show All</div>`;
-                    data.date_stats.forEach(ds => {
-                        html += `<div class="flex justify-between border-b py-1 cursor-pointer hover:bg-gray-50" onclick="loadFiltered('${ds.date}')"><span>${ds.date}</span><span class="font-bold">${ds.count}</span></div>`;
-                    });
-                    document.getElementById('date-stats-container').innerHTML = html;
-                }
-            } catch (err) { console.error(err); }
-        }
-
-        async function loadFiltered(date) {
-            if (!date) return;
-            isFiltered = true;
-            try {
-                const res = await fetch(`/api/filtered-logs/?date=${date}`);
-                const data = await res.json();
-                updateUI(data);
-            } catch (err) { console.error(err); }
-        }
-
-        function updateUI(data) {
-            const stats = data.stats || data;
-
-            if (stats) {
-                document.getElementById('total').innerText = stats.total_sent || 0;
-                document.getElementById('inbox').innerText = stats.inbox_count || 0;
-                document.getElementById('spam').innerText = stats.spam_count || 0;
-                document.getElementById('read').innerText = stats.read_count || 0;
-
-                const unreadValue = stats.unread_count !== undefined ? stats.unread_count : (stats.unread || 0);
-                document.getElementById('unread').innerText = unreadValue;
-            }
-
-            const tableBody = document.getElementById('log-table');
-            if (data.logs && data.logs.length > 0) {
-                tableBody.innerHTML = data.logs.map(log => generateTableRow(log)).join('');
-            } else {
-                tableBody.innerHTML = `<tr><td colspan="5" class="p-4 text-center">No activity found.</td></tr>`;
-            }
-        }
-
-        function resetView() {
-            isFiltered = false;
-            document.getElementById('dateFilter').value = '';
-            loadStats(true);
-        }
-
+        // Submit Logic
         document.getElementById('emailForm').onsubmit = async (e) => {
             e.preventDefault();
+
+            // Editor content sync
+            var format = document.getElementById('format-select').value;
+            document.getElementById('hidden-body').value = (format === 'html') ? quill.root.innerHTML : quill.getText();
+
             const btn = document.getElementById('sendBtn');
             btn.innerText = "Sending...";
             const formData = new FormData(e.target);
             const csrftoken = document.querySelector('[name=csrfmiddlewaretoken]').value;
+
             try {
                 await fetch('/send-bulk-email/', { method: 'POST', body: formData, headers: {'X-CSRFToken': csrftoken} });
                 alert("Campaign started!");
+                quill.setContents([{ insert: '\n' }]); // Clear editor
                 e.target.reset();
                 loadStats(true);
             } catch (err) { alert("Error sending email"); }
             btn.innerText = "Send Email";
         };
 
+        // UI Helpers
+        function generateTableRow(log) {
+            const isRead = log.mark === 'Read';
+            return `<tr class="border-b"><td class="p-3 truncate max-w-[120px]">${log.email_address}</td><td class="p-3">${log.status}</td><td class="p-3"><span class="px-2 py-1 rounded-full text-[9px] font-bold ${isRead ? 'bg-green-100 text-green-700' : 'bg-yellow-100 text-yellow-700'}">${log.mark}</span></td><td class="p-3">${log.deliverability}</td><td class="p-3 text-gray-400">${log.date_sent}</td></tr>`;
+        }
+
+        async function loadStats(force = false) {
+            if (isFiltered && !force) return;
+            try {
+                const res = await fetch('/api/stats/');
+                const data = await res.json();
+                updateUI(data);
+                if (data.date_stats) {
+                    let html = `<div onclick="resetView()" class="text-blue-600 font-bold cursor-pointer hover:underline mb-2">Show All</div>`;
+                    data.date_stats.forEach(ds => { html += `<div class="flex justify-between border-b py-1 cursor-pointer hover:bg-gray-50" onclick="loadFiltered('${ds.date}')"><span>${ds.date}</span><span class="font-bold">${ds.count}</span></div>`; });
+                    document.getElementById('date-stats-container').innerHTML = html;
+                }
+            } catch (err) { console.error(err); }
+        }
+
+        function updateUI(data) {
+            const stats = data.stats || data;
+            document.getElementById('total').innerText = stats.total_sent || 0;
+            document.getElementById('inbox').innerText = stats.inbox_count || 0;
+            document.getElementById('spam').innerText = stats.spam_count || 0;
+            document.getElementById('read').innerText = stats.read_count || 0;
+            document.getElementById('unread').innerText = stats.unread_count !== undefined ? stats.unread_count : (stats.unread || 0);
+            const tableBody = document.getElementById('log-table');
+            tableBody.innerHTML = (data.logs && data.logs.length > 0) ? data.logs.map(log => generateTableRow(log)).join('') : `<tr><td colspan="5" class="p-4 text-center">No activity found.</td></tr>`;
+        }
+
+        async function loadFiltered(date) { isFiltered = true; const res = await fetch(`/api/filtered-logs/?date=${date}`); const data = await res.json(); updateUI(data); }
+        function resetView() { isFiltered = false; loadStats(true); }
         setInterval(() => { if (!isFiltered) loadStats(); }, 5000);
     </script>
 </body>
