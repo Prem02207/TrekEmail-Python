@@ -35,8 +35,9 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
                 if key != 'email':
                     personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
 
-            # Mail jaate hi status 'Unread' rahega
-            log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Inbox')
+            # Updated: deliverability ko 'Sent' kar diya hai
+            log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Sent')
+
             pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
             content = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
 
@@ -96,7 +97,6 @@ class TrackEmailView(APIView):
         if not is_bot:
             try:
                 log = EmailLog.objects.get(id=log_id.replace('.png', ''))
-                # Open karne par hi 'Unread' se 'Read' hoga
                 if log.status == 'Unread':
                     log.status = 'Read'
                     log.save(update_fields=['status'])
@@ -134,12 +134,10 @@ class SendBulkEmailView(APIView):
             return Response({"error": str(e)}, status=500)
 
 
-# --- 6. Stats API (Fixed 7 Days Logic) ---
+# --- 6. Stats API ---
 class DashboardStatsView(APIView):
     def get(self, request):
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
-
-        # Aaj ki date se 7 din piche
         seven_days_ago = timezone.now().date() - timedelta(days=7)
 
         return Response({
@@ -150,7 +148,6 @@ class DashboardStatsView(APIView):
                 "read_count": logs_queryset.filter(status='Read').count(),
                 "unread_count": logs_queryset.filter(status='Unread').count(),
             },
-            # 7 din ka filter
             "date_stats": list(EmailLog.objects.filter(created_at__date__gte=seven_days_ago)
                                .values('created_at__date')
                                .annotate(date=TruncDate('created_at'), count=Count('id'))
