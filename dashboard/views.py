@@ -2,6 +2,8 @@ import pandas as pd
 import base64
 import requests
 import time
+import smtplib
+import os
 from datetime import datetime, timedelta
 from django.utils import timezone
 from rest_framework.views import APIView
@@ -12,6 +14,8 @@ from django.http import HttpResponse, JsonResponse
 from django.db import close_old_connections
 from django.db.models import Count
 from django.db.models.functions import TruncDate
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from .models import EmailLog
 
 
@@ -20,42 +24,57 @@ def dashboard_view(request):
     return render(request, 'dashboard.html')
 
 
-# --- 2. Helper Function for Email Sending ---
+# --- 2. Helper Function for Email Sending (SMTP) ---
 def send_emails_task(recipient_data, subject, body, is_html=True):
     close_old_connections()
-    url = "https://api.brevo.com/v3/smtp/email"
-    headers = {"api-key": settings.BREVO_API_KEY, "Content-Type": "application/json"}
 
-    for data in recipient_data:
-        try:
-            email = data.get('email')
-            # Personalization logic
-            personalized_body = body
-            for key, value in data.items():
-                if key != 'email':
-                    personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
+    # Gmail SMTP Settings
+    smtp_server = "smtp.gmail.com"
+    smtp_port = 587
+    sender_email = "premdemo22@gmail.com"
+    sender_password = os.environ.get('GMAIL_PASSWORD')
 
-            # Updated: deliverability ko 'Sent' kar diya hai
-            log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Sent')
+    try:
+        # Server connect karein
+        server = smtplib.SMTP(smtp_server, smtp_port)
+        server.starttls()
+        server.login(sender_email, sender_password)
 
-            pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
-            content = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
+        for data in recipient_data:
+            try:
+                email = data.get('email')
 
-            payload = {
-                "sender": {"email": "premdemo22@gmail.com", "name": "Prem Yadav"},
-                "to": [{"email": email}],
-                "subject": subject,
-            }
+                # Personalization logic
+                personalized_body = body
+                for key, value in data.items():
+                    if key != 'email':
+                        personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
 
-            if is_html:
-                payload["htmlContent"] = content
-            else:
-                payload["textContent"] = content
+                # Database mein log banayein
+                log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Sent')
 
-            requests.post(url, json=payload, headers=headers)
-            time.sleep(0.2)
-        except Exception as e:
-            print(f"Error: {e}")
+                # Tracking Pixel
+                pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
+                full_body = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
+
+                # Email prepare karein
+                msg = MIMEMultipart()
+                msg['From'] = f"Prem Yadav <{sender_email}>"
+                msg['To'] = email
+                msg['Subject'] = subject
+                msg['Reply-To'] = sender_email
+
+                msg.attach(MIMEText(full_body, 'html' if is_html else 'plain'))
+
+                # Mail bhejein
+                server.sendmail(sender_email, email, msg.as_string())
+                time.sleep(1)  # Gmail limit ka dhyan rakhein
+            except Exception as e:
+                print(f"Error sending to {email}: {e}")
+
+        server.quit()
+    except Exception as e:
+        print(f"SMTP Server Error: {e}")
 
 
 # --- 3. Filtered Logs API ---
