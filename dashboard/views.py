@@ -20,7 +20,6 @@ from .models import EmailLog
 
 # --- 1. Background Task for Email Sending ---
 def send_emails_task(recipient_data, subject, body, is_html=True):
-    # Threading start karein taaki request block na ho
     def _run_email_task():
         sender_password = os.environ.get('GMAIL_PASSWORD')
         if not sender_password:
@@ -31,7 +30,6 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
         close_old_connections()
 
         try:
-            # SMTP Server connection with Timeout
             server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
             server.starttls()
             server.login(sender_email, sender_password)
@@ -39,42 +37,32 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
             for data in recipient_data:
                 try:
                     email = data.get('email')
-                    if not email:
-                        continue
+                    if not email: continue
 
-                    # Personalization logic
                     personalized_body = body
                     for key, value in data.items():
                         if key != 'email':
                             personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
 
-                    # Database log
                     log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Sent')
-
-                    # Tracking Pixel
                     pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
                     full_body = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
 
-                    # Email prepare karein
                     msg = MIMEMultipart()
                     msg['From'] = f"Prem Yadav <{sender_email}>"
                     msg['To'] = email
                     msg['Subject'] = subject
                     msg.attach(MIMEText(full_body, 'html' if is_html else 'plain'))
 
-                    # Email bhejein
                     server.sendmail(sender_email, email, msg.as_string())
-                    time.sleep(0.1)  # Thoda delay taaki SMTP load na ho
-
+                    time.sleep(0.1)
                 except Exception as inner_e:
                     print(f"Error sending to {email}: {inner_e}")
 
             server.quit()
         except Exception as e:
-            # CRITICAL SMTP Error Handling
             print(f"CRITICAL SMTP ERROR: {e}")
 
-    # Thread trigger karein
     threading.Thread(target=_run_email_task).start()
 
 
@@ -100,7 +88,7 @@ class FilteredLogsView(APIView):
         }
         logs = [{
             'email_address': log.email_address,
-            'status': log.deliverability,
+            'status': 'Sent',
             'mark': log.status,
             'deliverability': log.deliverability,
             'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
@@ -124,7 +112,7 @@ class TrackEmailView(APIView):
         return response
 
 
-# --- 5. Bulk Email Sending (Updated) ---
+# --- 5. Bulk Email Sending ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -151,13 +139,26 @@ class DashboardStatsView(APIView):
     def get(self, request):
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
         seven_days_ago = timezone.now().date() - timedelta(days=7)
+
+        stats = {
+            "total_sent": logs_queryset.count(),
+            "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
+            "spam_count": logs_queryset.filter(deliverability='Spam').count(),
+            "read_count": logs_queryset.filter(status='Read').count(),
+            "unread_count": logs_queryset.filter(status='Unread').count(),
+        }
+
+        logs = [{
+            'email_address': log.email_address,
+            'status': 'Sent',
+            'mark': log.status,
+            'deliverability': log.deliverability,
+            'date_sent': log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else 'N/A'
+        } for log in logs_queryset[:20]]
+
         return Response({
-            "stats": {
-                "total_sent": logs_queryset.count(),
-                "read_count": logs_queryset.filter(status='Read').count(),
-                "unread_count": logs_queryset.filter(status='Unread').count(),
-            },
+            "stats": stats,
+            "logs": logs,
             "date_stats": list(EmailLog.objects.filter(created_at__date__gte=seven_days_ago)
-                               .values('created_at__date').annotate(date=TruncDate('created_at'), count=Count('id'))),
-            "logs": [{'email_address': log.email_address, 'status': log.status} for log in logs_queryset[:20]]
+                               .values('created_at__date').annotate(date=TruncDate('created_at'), count=Count('id')))
         })
