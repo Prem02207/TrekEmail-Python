@@ -18,19 +18,22 @@ from email.mime.multipart import MIMEMultipart
 from .models import EmailLog
 
 
-# --- 1. Background Task for Email Sending ---
+# --- 1. Background Task for Email Sending (Brevo Configured) ---
 def send_emails_task(recipient_data, subject, body, is_html=True):
     def _run_email_task():
-        sender_password = os.environ.get('GMAIL_PASSWORD')
-        if not sender_password:
-            print("ERROR: GMAIL_PASSWORD environment variable is missing!")
+        # Brevo (Sendinblue) settings from Environment Variables
+        smtp_server = "smtp-brevo.com"
+        smtp_port = 2525
+        sender_email = os.environ.get('EMAIL_HOST_USER')
+        sender_password = os.environ.get('EMAIL_HOST_PASSWORD')
+
+        if not sender_email or not sender_password:
+            print("ERROR: Brevo credentials missing in environment variables!")
             return
 
-        sender_email = "premdemo22@gmail.com"
         close_old_connections()
-
         try:
-            server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+            server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
             server.starttls()
             server.login(sender_email, sender_password)
 
@@ -39,6 +42,7 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
                     email = data.get('email')
                     if not email: continue
 
+                    # Personalization logic
                     personalized_body = body
                     for key, value in data.items():
                         if key != 'email':
