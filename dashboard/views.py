@@ -1,80 +1,86 @@
 import pandas as pd
 import base64
-import requests
+import threading
 import time
 import smtplib
 import os
-from datetime import datetime, timedelta
 from django.utils import timezone
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
-from django.conf import settings
 from django.http import HttpResponse, JsonResponse
 from django.db import close_old_connections
 from django.db.models import Count
 from django.db.models.functions import TruncDate
+from datetime import timedelta
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from .models import EmailLog
 
 
-# --- 1. Dashboard View ---
+# --- 1. Background Task for Email Sending ---
+def send_emails_task(recipient_data, subject, body, is_html=True):
+    # Threading start karein taaki request block na ho
+    def _run_email_task():
+        sender_password = os.environ.get('GMAIL_PASSWORD')
+        if not sender_password:
+            print("ERROR: GMAIL_PASSWORD environment variable is missing!")
+            return
+
+        sender_email = "premdemo22@gmail.com"
+        close_old_connections()
+
+        try:
+            # SMTP Server connection with Timeout
+            server = smtplib.SMTP("smtp.gmail.com", 587, timeout=30)
+            server.starttls()
+            server.login(sender_email, sender_password)
+
+            for data in recipient_data:
+                try:
+                    email = data.get('email')
+                    if not email:
+                        continue
+
+                    # Personalization logic
+                    personalized_body = body
+                    for key, value in data.items():
+                        if key != 'email':
+                            personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
+
+                    # Database log
+                    log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Sent')
+
+                    # Tracking Pixel
+                    pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
+                    full_body = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
+
+                    # Email prepare karein
+                    msg = MIMEMultipart()
+                    msg['From'] = f"Prem Yadav <{sender_email}>"
+                    msg['To'] = email
+                    msg['Subject'] = subject
+                    msg.attach(MIMEText(full_body, 'html' if is_html else 'plain'))
+
+                    # Email bhejein
+                    server.sendmail(sender_email, email, msg.as_string())
+                    time.sleep(0.1)  # Thoda delay taaki SMTP load na ho
+
+                except Exception as inner_e:
+                    print(f"Error sending to {email}: {inner_e}")
+
+            server.quit()
+        except Exception as e:
+            # CRITICAL SMTP Error Handling
+            print(f"CRITICAL SMTP ERROR: {e}")
+
+    # Thread trigger karein
+    threading.Thread(target=_run_email_task).start()
+
+
+# --- 2. Dashboard View ---
 def dashboard_view(request):
     return render(request, 'dashboard.html')
-
-
-# --- 2. Helper Function for Email Sending (SMTP) ---
-def send_emails_task(recipient_data, subject, body, is_html=True):
-    close_old_connections()
-
-    # Gmail SMTP Settings
-    smtp_server = "smtp.gmail.com"
-    smtp_port = 587
-    sender_email = "premdemo22@gmail.com"
-    sender_password = os.environ.get('GMAIL_PASSWORD')
-
-    try:
-        # Server connect karein
-        server = smtplib.SMTP(smtp_server, smtp_port)
-        server.starttls()
-        server.login(sender_email, sender_password)
-
-        for data in recipient_data:
-            try:
-                email = data.get('email')
-
-                # Personalization logic
-                personalized_body = body
-                for key, value in data.items():
-                    if key != 'email':
-                        personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
-
-                # Database mein log banayein
-                log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Sent')
-
-                # Tracking Pixel
-                pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
-                full_body = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
-
-                # Email prepare karein
-                msg = MIMEMultipart()
-                msg['From'] = f"Prem Yadav <{sender_email}>"
-                msg['To'] = email
-                msg['Subject'] = subject
-                msg['Reply-To'] = sender_email
-
-                msg.attach(MIMEText(full_body, 'html' if is_html else 'plain'))
-
-                # Mail bhejein
-                server.sendmail(sender_email, email, msg.as_string())
-                time.sleep(1)  # Gmail limit ka dhyan rakhein
-            except Exception as e:
-                print(f"Error sending to {email}: {e}")
-
-        server.quit()
-    except Exception as e:
-        print(f"SMTP Server Error: {e}")
 
 
 # --- 3. Filtered Logs API ---
@@ -85,7 +91,6 @@ class FilteredLogsView(APIView):
             return Response({"error": "Date required"}, status=400)
 
         logs_queryset = EmailLog.objects.filter(created_at__date=selected_date).order_by('-created_at')
-
         stats = {
             "total_sent": logs_queryset.count(),
             "read_count": logs_queryset.filter(status='Read').count(),
@@ -93,7 +98,6 @@ class FilteredLogsView(APIView):
             "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
             "spam_count": logs_queryset.filter(deliverability='Spam').count(),
         }
-
         logs = [{
             'email_address': log.email_address,
             'status': log.deliverability,
@@ -101,7 +105,6 @@ class FilteredLogsView(APIView):
             'deliverability': log.deliverability,
             'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
         } for log in logs_queryset[:20]]
-
         return Response({"logs": logs, "stats": stats})
 
 
@@ -109,27 +112,19 @@ class FilteredLogsView(APIView):
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
-        user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
-        bot_keywords = ['googleimageproxy', 'bingpreview', 'cortex', 'proxy', 'scanner', 'bot', 'spider', 'crawler']
-        is_bot = any(bot in user_agent for bot in bot_keywords)
-
-        if not is_bot:
-            try:
-                log = EmailLog.objects.get(id=log_id.replace('.png', ''))
-                if log.status == 'Unread':
-                    log.status = 'Read'
-                    log.save(update_fields=['status'])
-            except EmailLog.DoesNotExist:
-                pass
-
+        try:
+            log = EmailLog.objects.get(id=log_id.replace('.png', ''))
+            if log.status == 'Unread':
+                log.status = 'Read'
+                log.save(update_fields=['status'])
+        except:
+            pass
         response = HttpResponse(gif_data, content_type="image/gif")
         response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
-        response['Pragma'] = 'no-cache'
-        response['Expires'] = '0'
         return response
 
 
-# --- 5. Bulk Email Sending ---
+# --- 5. Bulk Email Sending (Updated) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
@@ -141,14 +136,12 @@ class SendBulkEmailView(APIView):
 
             if csv_file:
                 df = pd.read_csv(csv_file)
-                if 'email' not in df.columns:
-                    return Response({"error": "CSV must have 'email' column"}, status=400)
                 recipients = df.to_dict('records')
             else:
                 recipients = [{'email': manual_email}]
 
             send_emails_task(recipients, subject, body, is_html=(content_format == 'html'))
-            return JsonResponse({"status": "Success"})
+            return JsonResponse({"status": "Success", "message": "Background task initiated."})
         except Exception as e:
             return Response({"error": str(e)}, status=500)
 
@@ -158,24 +151,13 @@ class DashboardStatsView(APIView):
     def get(self, request):
         logs_queryset = EmailLog.objects.all().order_by('-created_at')
         seven_days_ago = timezone.now().date() - timedelta(days=7)
-
         return Response({
             "stats": {
                 "total_sent": logs_queryset.count(),
-                "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
-                "spam_count": logs_queryset.filter(deliverability='Spam').count(),
                 "read_count": logs_queryset.filter(status='Read').count(),
                 "unread_count": logs_queryset.filter(status='Unread').count(),
             },
             "date_stats": list(EmailLog.objects.filter(created_at__date__gte=seven_days_ago)
-                               .values('created_at__date')
-                               .annotate(date=TruncDate('created_at'), count=Count('id'))
-                               .order_by('-date')),
-            "logs": [{
-                'email_address': log.email_address,
-                'status': log.deliverability,
-                'mark': log.status,
-                'deliverability': log.deliverability,
-                'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
-            } for log in logs_queryset[:20]]
+                               .values('created_at__date').annotate(date=TruncDate('created_at'), count=Count('id'))),
+            "logs": [{'email_address': log.email_address, 'status': log.status} for log in logs_queryset[:20]]
         })
