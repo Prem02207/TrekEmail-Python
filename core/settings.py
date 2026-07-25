@@ -47,10 +47,10 @@ WSGI_APPLICATION = 'core.wsgi.application'
 
 # --- DATABASE CONFIGURATION (PostgreSQL) ---
 DATABASES = {
-    'default': dj_database_url.config(
-        default=os.environ.get('DATABASE_URL'),
-        conn_max_age=600
-    )
+    'default': {
+        'ENGINE': 'django.db.backends.sqlite3',
+        'NAME': BASE_DIR / 'db.sqlite3',
+    }
 }
 
 STATIC_URL = 'static/'
@@ -71,3 +71,6 @@ BREVO_API_KEY = os.environ.get('BREVO_API_KEY')
 DEFAULT_FROM_EMAIL = 'premdemo22@gmail.com'
 
 EMAIL_TIMEOUT = 120
+
+# --- SESSION ENGINE CONFIGURATION (File Based) ---
+SESSION_ENGINE = 'django.contrib.sessions.backends.file'

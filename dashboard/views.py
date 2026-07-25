@@ -4,24 +4,18 @@ import threading
 import time
 import smtplib
 import os
-from django.utils import timezone
+from datetime import datetime
+import uuid
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
 from django.http import HttpResponse, JsonResponse
-from django.db import close_old_connections
-from django.db.models import Count
-from django.db.models.functions import TruncDate
-from datetime import timedelta
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from .models import EmailLog
+from core.db import email_collection  # MongoDB connection import
 
 
-# --- 1. Background Task for Email Sending (Brevo Configured) ---
+# --- 1. Background Task for Email Sending (Brevo Configured & MongoDB Logging) ---
 def send_emails_task(recipient_data, subject, body, is_html=True):
     def _run_email_task():
-        # Brevo (Sendinblue) settings from Environment Variables
         smtp_server = "smtp-brevo.com"
         smtp_port = 2525
         sender_email = os.environ.get('EMAIL_HOST_USER')
@@ -31,7 +25,6 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
             print("ERROR: Brevo credentials missing in environment variables!")
             return
 
-        close_old_connections()
         try:
             server = smtplib.SMTP(smtp_server, smtp_port, timeout=30)
             server.starttls()
@@ -48,8 +41,20 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
                         if key != 'email':
                             personalized_body = personalized_body.replace(f"{{{{{key}}}}}", str(value))
 
-                    log = EmailLog.objects.create(email_address=email, status='Unread', deliverability='Sent')
-                    pixel_url = f"https://trekemail-python.onrender.com/track/{log.id}.png"
+                    # Generate unique ID for MongoDB tracking
+                    email_id = str(uuid.uuid4())
+
+                    # Insert log into MongoDB
+                    email_collection.insert_one({
+                        "emailId": email_id,
+                        "email_address": email,
+                        "subject": subject,
+                        "status": "Unread",
+                        "deliverability": "Sent",
+                        "createdAt": datetime.utcnow()
+                    })
+
+                    pixel_url = f"https://trekemail-python.onrender.com/track/{email_id}.png"
                     full_body = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
 
                     msg = MIMEMultipart()
@@ -75,42 +80,60 @@ def dashboard_view(request):
     return render(request, 'dashboard.html')
 
 
-# --- 3. Filtered Logs API ---
+# --- 3. Filtered Logs API (MongoDB) ---
 class FilteredLogsView(APIView):
     def get(self, request):
         selected_date = request.query_params.get('date')
         if not selected_date:
             return Response({"error": "Date required"}, status=400)
 
-        logs_queryset = EmailLog.objects.filter(created_at__date=selected_date).order_by('-created_at')
-        stats = {
-            "total_sent": logs_queryset.count(),
-            "read_count": logs_queryset.filter(status='Read').count(),
-            "unread_count": logs_queryset.filter(status='Unread').count(),
-            "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
-            "spam_count": logs_queryset.filter(deliverability='Spam').count(),
+        # Querying MongoDB based on date string (YYYY-MM-DD)
+        start_date = f"{selected_date}T00:00:00.000Z"
+        end_date = f"{selected_date}T23:59:59.999Z"
+
+        query = {
+            "createdAt": {
+                "$gte": datetime.fromisoformat(start_date[:-1]),
+                "$lte": datetime.fromisoformat(end_date[:-1])
+            }
         }
+
+        logs_cursor = email_collection.find(query).sort("createdAt", -1)
+        logs_list = list(logs_cursor)
+
+        stats = {
+            "total_sent": len(logs_list),
+            "read_count": sum(1 for log in logs_list if log.get('status') == 'Read'),
+            "unread_count": sum(1 for log in logs_list if log.get('status') == 'Unread'),
+            "inbox_count": sum(1 for log in logs_list if log.get('deliverability') == 'Inbox'),
+            "spam_count": sum(1 for log in logs_list if log.get('deliverability') == 'Spam'),
+        }
+
         logs = [{
-            'email_address': log.email_address,
+            'email_address': log.get('email_address'),
             'status': 'Sent',
-            'mark': log.status,
-            'deliverability': log.deliverability,
-            'date_sent': timezone.localtime(log.created_at).strftime('%Y-%m-%d %H:%M')
-        } for log in logs_queryset[:20]]
+            'mark': log.get('status'),
+            'deliverability': log.get('deliverability', 'Sent'),
+            'date_sent': log.get('createdAt').strftime('%Y-%m-%d %H:%M') if log.get('createdAt') else 'N/A'
+        } for log in logs_list[:20]]
+
         return Response({"logs": logs, "stats": stats})
 
 
-# --- 4. Tracking Pixel ---
+# --- 4. Tracking Pixel (MongoDB Updated) ---
 class TrackEmailView(APIView):
     def get(self, request, log_id):
         gif_data = base64.b64decode("R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7")
         try:
-            log = EmailLog.objects.get(id=log_id.replace('.png', ''))
-            if log.status == 'Unread':
-                log.status = 'Read'
-                log.save(update_fields=['status'])
-        except:
-            pass
+            clean_id = log_id.replace('.png', '')
+            # Update status in MongoDB if found and unread
+            email_collection.update_one(
+                {"emailId": clean_id, "status": "Unread"},
+                {"$set": {"status": "Read"}}
+            )
+        except Exception as e:
+            print(f"Tracking error: {e}")
+
         response = HttpResponse(gif_data, content_type="image/gif")
         response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
         return response
@@ -138,31 +161,51 @@ class SendBulkEmailView(APIView):
             return Response({"error": str(e)}, status=500)
 
 
-# --- 6. Stats API ---
+# --- 6. Stats API (MongoDB Aggregation) ---
 class DashboardStatsView(APIView):
     def get(self, request):
-        logs_queryset = EmailLog.objects.all().order_by('-created_at')
-        seven_days_ago = timezone.now().date() - timedelta(days=7)
+        all_logs = list(email_collection.find().sort("createdAt", -1))
 
         stats = {
-            "total_sent": logs_queryset.count(),
-            "inbox_count": logs_queryset.filter(deliverability='Inbox').count(),
-            "spam_count": logs_queryset.filter(deliverability='Spam').count(),
-            "read_count": logs_queryset.filter(status='Read').count(),
-            "unread_count": logs_queryset.filter(status='Unread').count(),
+            "total_sent": len(all_logs),
+            "inbox_count": sum(1 for log in all_logs if log.get('deliverability') == 'Inbox'),
+            "spam_count": sum(1 for log in all_logs if log.get('deliverability') == 'Spam'),
+            "read_count": sum(1 for log in all_logs if log.get('status') == 'Read'),
+            "unread_count": sum(1 for log in all_logs if log.get('status') == 'Unread'),
         }
 
         logs = [{
-            'email_address': log.email_address,
+            'email_address': log.get('email_address'),
             'status': 'Sent',
-            'mark': log.status,
-            'deliverability': log.deliverability,
-            'date_sent': log.created_at.strftime('%Y-%m-%d %H:%M') if log.created_at else 'N/A'
-        } for log in logs_queryset[:20]]
+            'mark': log.get('status'),
+            'deliverability': log.get('deliverability', 'Sent'),
+            'date_sent': log.get('createdAt').strftime('%Y-%m-%d %H:%M') if log.get('createdAt') else 'N/A'
+        } for log in all_logs[:20]]
+
+        # Grouping by date for chart/stats (last 7 days logic via MongoDB aggregation)
+        pipeline = [
+            {
+                "$project": {
+                    "date": {
+                        "$dateToString": {"format": "%Y-%m-%d", "date": "$createdAt"}
+                    }
+                }
+            },
+            {
+                "$group": {
+                    "_id": "$date",
+                    "count": {"$sum": 1}
+                }
+            },
+            {"$sort": {"_id": -1}},
+            {"$limit": 7}
+        ]
+
+        date_stats_raw = list(email_collection.aggregate(pipeline))
+        date_stats = [{"date": item["_id"], "count": item["count"]} for item in date_stats_raw if item["_id"]]
 
         return Response({
             "stats": stats,
             "logs": logs,
-            "date_stats": list(EmailLog.objects.filter(created_at__date__gte=seven_days_ago)
-                               .values('created_at__date').annotate(date=TruncDate('created_at'), count=Count('id')))
+            "date_stats": date_stats
         })
