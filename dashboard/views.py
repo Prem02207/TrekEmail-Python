@@ -6,6 +6,9 @@ import smtplib
 import os
 from datetime import datetime
 import uuid
+from email.mime.multipart import MIMEMultipart
+from email.mime.text import MIMEText
+from django.conf import settings  # Import settings to access DEFAULT_FROM_EMAIL
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from django.shortcuts import render
@@ -17,7 +20,12 @@ from core.db import email_collection  # MongoDB connection import
 def send_emails_task(recipient_data, subject, body, is_html=True):
     def _run_email_task():
         smtp_server = "smtp-brevo.com"
-        smtp_port = 2525
+        smtp_port = 587  # Updated to port 587 for TLS stability
+
+        # Using settings.DEFAULT_FROM_EMAIL as requested for the verified sender
+        from_email_full = getattr(settings, 'DEFAULT_FROM_EMAIL', os.environ.get('EMAIL_HOST_USER'))
+
+        # Extract raw email for SMTP login user/sender verification if needed
         sender_email = os.environ.get('EMAIL_HOST_USER')
         sender_password = os.environ.get('EMAIL_HOST_PASSWORD')
 
@@ -58,11 +66,12 @@ def send_emails_task(recipient_data, subject, body, is_html=True):
                     full_body = f"{personalized_body} <img src='{pixel_url}' width='1' height='1' />"
 
                     msg = MIMEMultipart()
-                    msg['From'] = f"Prem Yadav <{sender_email}>"
+                    msg['From'] = from_email_full  # Uses verified sender from settings
                     msg['To'] = email
                     msg['Subject'] = subject
                     msg.attach(MIMEText(full_body, 'html' if is_html else 'plain'))
 
+                    # Send using authenticated sender and recipient email
                     server.sendmail(sender_email, email, msg.as_string())
                     time.sleep(0.1)
                 except Exception as inner_e:
@@ -139,21 +148,24 @@ class TrackEmailView(APIView):
         return response
 
 
-# --- 5. Bulk Email Sending ---
+# --- 5. Bulk Email Sending (API & Campaign View) ---
 class SendBulkEmailView(APIView):
     def post(self, request):
         try:
             csv_file = request.FILES.get('csv_file')
-            manual_email = request.POST.get('manual_email')
-            subject = request.POST.get('subject')
-            body = request.POST.get('body')
+            manual_email = request.POST.get('manual_email') or request.POST.get('email')
+            subject = request.POST.get('subject', 'Campaign Update')
+            body = request.POST.get('body') or request.POST.get('content', '')
             content_format = request.POST.get('format', 'html')
 
             if csv_file:
                 df = pd.read_csv(csv_file)
                 recipients = df.to_dict('records')
-            else:
+            elif manual_email:
                 recipients = [{'email': manual_email}]
+            else:
+                # Fallback to single recipient list handling as requested
+                recipients = [{'email': 'user@example.com'}]
 
             send_emails_task(recipients, subject, body, is_html=(content_format == 'html'))
             return JsonResponse({"status": "Success", "message": "Background task initiated."})
